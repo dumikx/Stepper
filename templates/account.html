@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ro">
+<head>
+{% include "_head.html" %}
+<title>Stepper · Cont</title>
+</head>
+<body>
+<main class="page">
+  {% set active = 'account' %}{% include "_nav.html" %}
+  <h1>{{ g.user.username }}</h1>
+
+  <section class="card">
+    <h2>Polar Flow</h2>
+    {% if not polar_configured %}
+      <p class="muted" style="margin:0">Conectarea cu Polar nu e încă activată pe server (lipsesc cheile API).</p>
+    {% elif polar %}
+      <p style="margin:0">Contul Polar e conectat. Pulsul se importă din pagina fiecărei sesiuni.</p>
+      <form method="post" action="/polar/disconnect"><button class="danger" type="submit">Deconectează Polar</button></form>
+    {% else %}
+      <p class="muted" style="margin:0">Folosește centura H9/H10 cu aplicația Polar Flow, apoi adu pulsul lângă sesiunile de urcare.</p>
+      <a class="btn primary" href="/polar/connect">Conectează contul Polar</a>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Aplicație pe ecranul principal</h2>
+    <p class="muted" style="margin:0">În Safari: butonul Share, apoi „Adaugă pe ecranul principal”. Se deschide pe tot ecranul, ca o aplicație.</p>
+  </section>
+
+  <form method="post" action="/logout"><button type="submit">Ieși din cont</button></form>
+</main>
+</body>
+</html>

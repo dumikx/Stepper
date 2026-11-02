@@ -1,51 +1,23 @@
 <!doctype html>
 <html lang="ro">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#0f1720">
-<title>Stepper Urcare</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+{% include "_head.html" %}
+<title>Stepper</title>
 <style>
-/* Layout: one screen, camera strip on top, giant elevation readout (legible from 2–3 m), controls at the bottom. Dark only: used as a workout screen. */
-:root {
-  --bg: #0f1720;        /* night slate */
-  --panel: #17222e;
-  --line: #263544;
-  --fg: #e8eef3;
-  --muted: #8a9bab;
-  --accent: #ffa24c;    /* alpenglow */
-  --up: #5fd39a;
-  --warn: #ff6b5e;
-  --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
-  --body: "Atkinson Hyperlegible", -apple-system, system-ui, sans-serif;
-  color-scheme: dark;
-}
-* { box-sizing: border-box; }
-[hidden] { display: none !important; }
-html, body { height: 100%; margin: 0; }
-body {
-  background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px;
-  padding: env(safe-area-inset-top, 0px) max(16px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(16px, env(safe-area-inset-left, 0px));
-  display: flex; flex-direction: column; gap: 10px; overflow: hidden;
-  -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
-}
-header { display: flex; align-items: baseline; justify-content: space-between; padding-top: 8px; }
-header h1 { font-family: var(--display); font-weight: 600; font-size: 20px; letter-spacing: .06em; text-transform: uppercase; margin: 0; color: var(--muted); }
-#status { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+html, body { height: 100%; }
+body { display: flex; flex-direction: column; gap: 10px; overflow: hidden; -webkit-user-select: none; user-select: none; }
+.topbar .nav a { padding: 6px 10px; font-size: 13px; }
+#status { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 #status i { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; }
 #status.ok i { background: var(--up); }
 #status.lost i { background: var(--warn); }
-
 #cam { position: relative; width: 100%; max-height: 30vh; aspect-ratio: 3/4; margin: 0 auto; border-radius: 10px; overflow: hidden; background: #000; border: 1px solid var(--line); }
 #cam video, #cam canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 #cam.mirror video, #cam.mirror canvas { transform: scaleX(-1); }
-#camMsg { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 12px; color: var(--muted); font-size: 14px; }
-#spark { width: 100%; height: 46px; display: block; }
-
+#camMsg { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 12px; color: var(--muted); font-size: 14px; background: rgba(0,0,0,.55); }
+#sparkRow { display: flex; align-items: center; gap: 10px; }
+#spark { flex: 1; min-width: 0; height: 46px; display: block; }
+#sync { font-size: 12px; color: var(--muted); white-space: nowrap; }
 #readout { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 0; }
 #elev { font-family: var(--display); font-weight: 700; font-size: min(34vw, 22vh); line-height: .9; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
 #elev small { font-size: .38em; font-weight: 600; color: var(--accent); margin-left: .08em; }
@@ -55,38 +27,30 @@ header h1 { font-family: var(--display); font-weight: 600; font-size: 20px; lett
 .stat { text-align: center; }
 .stat b { display: block; font-family: var(--display); font-weight: 600; font-size: min(11vw, 7vh); font-variant-numeric: tabular-nums; line-height: 1; }
 .stat span { font-size: 12px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
-
 #controls { display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 10px; padding-bottom: 12px; }
-button { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 8px; font-weight: 700; }
-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-button:active { transform: scale(.97); }
-#go { background: var(--accent); color: #1b1006; border-color: var(--accent); font-size: 20px; }
-#go.running { background: var(--panel); color: var(--fg); border-color: var(--line); }
+#controls button { padding: 14px 8px; }
+#go { font-size: 20px; }
+#go:not(.running) { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .adj { display: flex; gap: 6px; }
-.adj button { flex: 1; padding: 14px 0; font-size: 18px; }
-
-/* Settings sheet */
+.adj button { flex: 1; padding: 14px 0 !important; font-size: 18px; }
 #sheet { position: fixed; inset: 0; background: rgba(5,9,13,.7); display: flex; align-items: flex-end; z-index: 20; }
-#sheet .box { background: var(--panel); width: 100%; max-height: 88vh; overflow-y: auto; border-radius: 16px 16px 0 0; padding: 18px max(16px, env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 16px; }
-#sheet h2 { font-family: var(--display); font-size: 24px; margin: 0; letter-spacing: .03em; }
-#sheet h3 { font-family: var(--display); font-size: 18px; margin: 4px 0 0; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+#sheet .box { background: var(--panel); width: 100%; max-height: 88vh; overflow-y: auto; border-radius: 16px 16px 0 0; padding: 18px max(16px, env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 16px; -webkit-user-select: text; user-select: text; }
+#sheet h2.title { font-family: var(--display); font-size: 24px; margin: 0; letter-spacing: .03em; color: var(--fg); text-transform: none; }
 .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .row label { flex: 1; }
 .row label small { display: block; color: var(--muted); font-size: 12px; }
-input[type=number] { width: 90px; font: inherit; font-size: 18px; padding: 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; text-align: right; }
-select { font: inherit; padding: 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; }
+.row input[type=number] { width: 96px; text-align: right; }
+.row select { width: auto; }
 input[type=checkbox] { width: 26px; height: 26px; accent-color: var(--accent); }
-#hist { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
-#hist div { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
-#hist em { color: var(--muted); font-style: normal; }
 #countdown { position: fixed; inset: 0; display: grid; place-items: center; font-family: var(--display); font-size: 40vw; font-weight: 700; color: var(--accent); background: rgba(15,23,32,.85); z-index: 30; }
+#confirmNew { display: flex; flex-direction: column; gap: 8px; }
 @media (prefers-reduced-motion: reduce) { #elev.pulse { animation: none; } }
 </style>
 </head>
 <body>
-<header>
-  <h1>Stepper</h1>
+<header class="topbar">
   <div id="status"><i></i><span id="statusText">Pregătit</span></div>
+  <nav class="nav"><a href="/istoric">Istoric</a><a href="/cont">Cont</a></nav>
 </header>
 
 <div id="cam" class="mirror">
@@ -94,7 +58,7 @@ input[type=checkbox] { width: 26px; height: 26px; accent-color: var(--accent); }
   <canvas id="overlay"></canvas>
   <div id="camMsg">Apasă Start. Telefonul cere acces la cameră.</div>
 </div>
-<canvas id="spark"></canvas>
+<div id="sparkRow"><canvas id="spark"></canvas><span id="sync"></span></div>
 
 <main id="readout">
   <div id="elev">0.0<small>m</small></div>
@@ -106,7 +70,7 @@ input[type=checkbox] { width: 26px; height: 26px; accent-color: var(--accent); }
 </main>
 
 <div id="controls">
-  <button id="menu" aria-label="Setări și istoric">Setări</button>
+  <button id="menu" aria-label="Setări">Setări</button>
   <button id="go">Start</button>
   <div class="adj">
     <button id="minus" aria-label="Scade o urcare">−</button>
@@ -116,18 +80,19 @@ input[type=checkbox] { width: 26px; height: 26px; accent-color: var(--accent); }
 
 <div id="sheet" hidden>
   <div class="box">
-    <div class="row"><h2>Setări</h2><button id="close">Gata</button></div>
+    <div class="row"><h2 class="title">Setări</h2><button id="close">Gata</button></div>
+    <div id="confirmNew">
+      <button id="newSession">Încheie sesiunea și începe una nouă</button>
+      <span class="muted small">Sesiunea curentă e salvată în istoric pe măsură ce urci.</span>
+    </div>
     <div class="row"><label for="height">Înălțime treaptă<small>cm per urcare</small></label><input id="height" type="number" min="5" max="60" step="0.5" inputmode="decimal"></div>
     <div class="row"><label for="facing">Camera</label><select id="facing"><option value="user">Față (vezi ecranul)</option><option value="environment">Spate</option></select></div>
     <div class="row"><label for="beep">Bip la fiecare urcare</label><input id="beep" type="checkbox"></div>
     <div class="row"><label for="voice">Anunț vocal<small>la fiecare 10 m</small></label><input id="voice" type="checkbox"></div>
-    <h3>Detecție</h3>
+    <h2>Detecție</h2>
     <div class="row"><label for="upTh">Prag sus<small>cât trebuie să urci, în lungimi de trunchi (implicit 0.30)</small></label><input id="upTh" type="number" min="0.1" max="1" step="0.02"></div>
     <div class="row"><label for="downTh">Prag jos<small>revenire la podea (implicit 0.12)</small></label><input id="downTh" type="number" min="0" max="0.5" step="0.02"></div>
     <div class="row"><label for="model">Model<small>Lite e mai rapid; Full e mai precis</small></label><select id="model"><option value="0">Lite</option><option value="1">Full</option></select></div>
-    <h3>Istoric</h3>
-    <div id="hist"></div>
-    <button id="clearHist">Șterge istoricul</button>
   </div>
 </div>
 <div id="countdown" hidden></div>
@@ -176,28 +141,62 @@ function createCounter(opts) {
 // ---- END COUNTER ----
 
 const $ = id => document.getElementById(id);
-const store = {
+const local = {
   get(k, def) { try { const v = localStorage.getItem('stepper.' + k); return v === null ? def : JSON.parse(v); } catch { return def; } },
-  set(k, v) { try { localStorage.setItem('stepper.' + k, JSON.stringify(v)); } catch {} }
+  set(k, v) { try { localStorage.setItem('stepper.' + k, JSON.stringify(v)); } catch {} },
+  del(k) { try { localStorage.removeItem('stepper.' + k); } catch {} }
 };
-const cfg = Object.assign({ height: 22, facing: 'user', beep: true, voice: true, up: 0.30, down: 0.12, model: 0 }, store.get('cfg', {}));
+const cfg = Object.assign({ height: 22, facing: 'user', beep: true, voice: true, up: 0.30, down: 0.12, model: 0 }, {{ settings|tojson }});
 const counter = createCounter({ up: cfg.up, down: cfg.down });
 
-let running = false, startedAt = 0, activeMs = 0, stream = null, pose = null, busy = false;
-let wakeLock = null, audio = null, lastAnnounce = 0, lastStatus = '';
-const trace = []; // recent d values for the sparkline
+// Current workout. Persisted locally on every change so a reload or crash never loses it;
+// pushed to the server as full state (idempotent), so retries are safe.
+const UID = {{ g.user.id }};
+let W = local.get('current', null); // {uid, id, started_at, height_cm, climbs:[ms], active_ms}
+if (W && W.uid !== UID) W = null;    // a session left on this phone by another account
+let running = false, startedAt = 0, stream = null, pose = null, busy = false;
+let wakeLock = null, audio = null, lastAnnounce = 0, lastStatus = '', dirty = false, syncing = false;
+const trace = [];
+if (W) { lastAnnounce = Math.floor(elevation() / 10) * 10; $('go').textContent = 'Continuă'; dirty = true; }
+
+function newWorkout() { W = { uid: UID, id: null, started_at: Date.now(), height_cm: cfg.height, climbs: [], active_ms: 0 }; saveLocal(); }
+function saveLocal() { local.set('current', W); }
+
+// ---- Server sync ----
+async function api(method, url, body) {
+  const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined, credentials: 'same-origin', keepalive: !!body && JSON.stringify(body).length < 60000 });
+  if (r.status === 401) { location.href = '/login?next=/'; throw new Error('auth'); }
+  if (r.status === 404 && W && url.endsWith('/' + W.id)) { W.id = null; saveLocal(); } // deleted on the server: recreate
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+async function sync() {
+  if (!W || syncing || !dirty) return;
+  syncing = true; dirty = false;
+  try {
+    if (!W.id) { const r = await api('POST', '/api/workouts', { started_at: W.started_at, height_cm: W.height_cm }); W.id = r.id; saveLocal(); }
+    await api('PUT', '/api/workouts/' + W.id, { climbs: W.climbs, active_ms: Math.round(elapsed()), ended_at: Date.now() });
+    $('sync').textContent = 'Salvat';
+  } catch (e) {
+    dirty = true; $('sync').textContent = 'Nesalvat · reîncerc';
+  } finally { syncing = false; }
+}
+function markDirty() { dirty = true; saveLocal(); }
+setInterval(sync, 10000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { if (W) W.active_ms = Math.round(elapsed()); markDirty(); sync(); } });
 
 // ---- UI ----
 function fmtTime(ms) { const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, ss = s % 60;
   return h ? `${h}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}` : `${m}:${String(ss).padStart(2,'0')}`; }
-function elapsed() { return activeMs + (running ? performance.now() - startedAt : 0); }
-function elevation() { return counter.climbs * cfg.height / 100; }
+function elapsed() { return (W ? W.active_ms : 0) + (running ? performance.now() - startedAt : 0); }
+function nClimbs() { return W ? W.climbs.length : 0; }
+function elevation() { return W ? W.climbs.length * W.height_cm / 100 : 0; }
 function render() {
   const e = elevation();
   $('elev').firstChild.nodeValue = e < 100 ? e.toFixed(1) : e.toFixed(0);
-  $('climbs').textContent = counter.climbs;
+  $('climbs').textContent = nClimbs();
   const t = elapsed(); $('time').textContent = fmtTime(t);
-  $('rate').textContent = t > 30000 && counter.climbs ? Math.round(e / (t / 3600000)) : '–';
+  $('rate').textContent = t > 30000 && nClimbs() ? Math.round(e / (t / 3600000)) : '–';
 }
 function setStatus(kind, text) {
   if (kind + text === lastStatus) return; lastStatus = kind + text;
@@ -217,9 +216,10 @@ function say(text) {
   if (!cfg.voice || !('speechSynthesis' in window)) return;
   const u = new SpeechSynthesisUtterance(text); u.lang = 'ro-RO'; speechSynthesis.speak(u);
 }
-function onClimb() {
+function addClimb() {
+  W.climbs.push(Date.now()); markDirty();
   const e = elevation();
-  beep(counter.climbs % 10 === 0 ? 1320 : 880, 0.12);
+  beep(nClimbs() % 10 === 0 ? 1320 : 880, 0.12);
   const ten = Math.floor(e / 10) * 10;
   if (ten > lastAnnounce) { lastAnnounce = ten; say(`${ten} metri`); }
   const el = $('elev'); el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse');
@@ -233,29 +233,29 @@ function drawPose(lm) {
   if (c.width !== v.videoWidth) { c.width = v.videoWidth; c.height = v.videoHeight; }
   const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height);
   if (!lm) return;
-  const W = c.width, H = c.height;
-  x.lineWidth = Math.max(2, W / 160); x.strokeStyle = counter.state === 'up' ? '#5fd39a' : '#ffa24c';
+  const W_ = c.width, H = c.height;
+  x.lineWidth = Math.max(2, W_ / 160); x.strokeStyle = counter.state === 'up' ? '#5fd39a' : '#ffa24c';
   x.beginPath();
-  for (const [a, b] of EDGES) { x.moveTo(lm[a].x * W, lm[a].y * H); x.lineTo(lm[b].x * W, lm[b].y * H); }
+  for (const [a, b] of EDGES) { x.moveTo(lm[a].x * W_, lm[a].y * H); x.lineTo(lm[b].x * W_, lm[b].y * H); }
   x.stroke();
-  const cy = ((lm[11].y + lm[12].y + lm[23].y + lm[24].y) / 4) * H, cx = ((lm[23].x + lm[24].x) / 2) * W;
-  x.fillStyle = '#e8eef3'; x.beginPath(); x.arc(cx, cy, Math.max(4, W / 70), 0, 7); x.fill();
+  const cy = ((lm[11].y + lm[12].y + lm[23].y + lm[24].y) / 4) * H, cx = ((lm[23].x + lm[24].x) / 2) * W_;
+  x.fillStyle = '#e8eef3'; x.beginPath(); x.arc(cx, cy, Math.max(4, W_ / 70), 0, 7); x.fill();
 }
+const MAXTRACE = 150;
 function drawSpark() {
   const c = $('spark'), r = c.getBoundingClientRect(), dpr = devicePixelRatio || 1;
   if (c.width !== Math.round(r.width * dpr)) { c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr); }
-  const x = c.getContext('2d'), W = c.width, H = c.height; x.clearRect(0, 0, W, H);
+  const x = c.getContext('2d'), Wd = c.width, H = c.height; x.clearRect(0, 0, Wd, H);
   const lo = -0.2, hi = 0.8, Y = v => H - (Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo) * H;
   x.lineWidth = dpr; x.setLineDash([4 * dpr, 4 * dpr]);
-  x.strokeStyle = '#5fd39a88'; x.beginPath(); x.moveTo(0, Y(cfg.up)); x.lineTo(W, Y(cfg.up)); x.stroke();
-  x.strokeStyle = '#ffa24c88'; x.beginPath(); x.moveTo(0, Y(cfg.down)); x.lineTo(W, Y(cfg.down)); x.stroke();
+  x.strokeStyle = '#5fd39a88'; x.beginPath(); x.moveTo(0, Y(cfg.up)); x.lineTo(Wd, Y(cfg.up)); x.stroke();
+  x.strokeStyle = '#ffa24c88'; x.beginPath(); x.moveTo(0, Y(cfg.down)); x.lineTo(Wd, Y(cfg.down)); x.stroke();
   x.setLineDash([]);
   if (trace.length < 2) return;
   x.strokeStyle = '#e8eef3'; x.lineWidth = 2 * dpr; x.beginPath();
-  trace.forEach((v, i) => { const px = i / (MAXTRACE - 1) * W; i ? x.lineTo(px, Y(v)) : x.moveTo(px, Y(v)); });
+  trace.forEach((v, i) => { const px = i / (MAXTRACE - 1) * Wd; i ? x.lineTo(px, Y(v)) : x.moveTo(px, Y(v)); });
   x.stroke();
 }
-const MAXTRACE = 150;
 
 // ---- Camera + pose ----
 async function startCamera() {
@@ -277,7 +277,7 @@ async function startPose() {
     const res = counter.push(lm);
     if (res === 'lost') setStatus('lost', 'Nu te văd întreg');
     else { setStatus('ok', counter.state === 'up' ? 'Sus' : 'Jos'); trace.push(counter.d); if (trace.length > MAXTRACE) trace.shift(); drawSpark(); }
-    if (res === 'climb') onClimb();
+    if (res === 'climb') addClimb();
   });
   try {
     await pose.initialize();
@@ -310,67 +310,57 @@ function countdown(n) {
     const t = setInterval(() => { n--; if (n <= 0) { clearInterval(t); el.hidden = true; res(); } else { el.textContent = n; beep(660, 0.08); } }, 1000);
   });
 }
+function pause() {
+  if (!running) return;
+  W.active_ms += performance.now() - startedAt; running = false;
+  $('go').textContent = 'Continuă'; $('go').classList.remove('running');
+  try { wakeLock && wakeLock.release(); } catch {}
+  markDirty(); sync(); render();
+}
 $('go').onclick = async () => {
-  if (!running) {
-    try {
-      if (!audio) { audio = new (window.AudioContext || window.webkitAudioContext)(); }
-      audio.resume();
-      if ('speechSynthesis' in window) speechSynthesis.speak(new SpeechSynthesisUtterance('')); // unlock on iOS
-      if (!stream) await startCamera();
-      await startPose();
-    } catch (e) {
-      $('camMsg').hidden = false;
-      const msg = e.message || e.name;
-      $('camMsg').textContent = e.stage === 'model'
-        ? (/unsafe-eval|Content Security Policy/i.test(msg)
-            ? 'Serverul blochează WebAssembly (header CSP), deci modelul nu poate rula. Pagina trebuie servită fără acel header.'
-            : 'Nu pot încărca modelul de detecție: ' + msg + '. Verifică internetul și apasă din nou Start.')
-        : 'Nu pot porni camera: ' + msg + '. Verifică permisiunea pentru cameră în Setări > Safari.';
-      setStatus('lost', 'Eroare'); return;
-    }
-    requestWake();
-    if (activeMs === 0) await countdown(5);
-    counter.relevel(); trace.length = 0;
-    running = true; startedAt = performance.now();
-    $('go').textContent = 'Pauză'; $('go').classList.add('running');
-  } else {
-    activeMs += performance.now() - startedAt; running = false;
-    $('go').textContent = 'Continuă'; $('go').classList.remove('running');
-    try { wakeLock && wakeLock.release(); } catch {}
-    saveSession(); render();
+  if (running) return pause();
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    audio.resume();
+    if ('speechSynthesis' in window) speechSynthesis.speak(new SpeechSynthesisUtterance('')); // unlock on iOS
+    if (!stream) await startCamera();
+    await startPose();
+  } catch (e) {
+    const msg = e.message || e.name;
+    $('camMsg').hidden = false;
+    $('camMsg').textContent = e.stage === 'model'
+      ? (/unsafe-eval|Content Security Policy/i.test(msg)
+          ? 'Serverul blochează WebAssembly (header CSP), deci modelul nu poate rula. Pagina trebuie servită fără acel header.'
+          : 'Nu pot încărca modelul de detecție: ' + msg + '. Verifică internetul și apasă din nou Start.')
+      : 'Nu pot porni camera: ' + msg + '. Verifică permisiunea pentru cameră în Setări > Safari.';
+    setStatus('lost', 'Eroare'); return;
   }
+  requestWake();
+  const fresh = !W;
+  if (fresh) await countdown(5);
+  if (!W) newWorkout();
+  counter.relevel(); trace.length = 0;
+  running = true; startedAt = performance.now();
+  $('go').textContent = 'Pauză'; $('go').classList.add('running');
+  markDirty(); sync();
 };
-$('plus').onclick = () => { counter.climbs = counter.climbs + 1; render(); saveSession(); };
-$('minus').onclick = () => { counter.climbs = counter.climbs - 1; render(); saveSession(); };
+$('plus').onclick = () => { if (!W) newWorkout(); addClimb(); };
+$('minus').onclick = () => { if (W && W.climbs.length) { W.climbs.pop(); markDirty(); render(); } };
 
-// One history entry per session; a session ends when Reset is pressed (in Settings) or the page reloads.
-let sessionId = null;
-function saveSession() {
-  if (!counter.climbs && !activeMs) return;
-  const hist = store.get('hist', []);
-  if (!sessionId) sessionId = Date.now();
-  const entry = { id: sessionId, climbs: counter.climbs, height: cfg.height, ms: Math.round(elapsed()) };
-  const i = hist.findIndex(h => h.id === sessionId);
-  if (i >= 0) hist[i] = entry; else hist.unshift(entry);
-  store.set('hist', hist.slice(0, 200));
-}
-function renderHist() {
-  const hist = store.get('hist', []), box = $('hist'); box.textContent = '';
-  if (!hist.length) { box.textContent = 'Nicio sesiune salvată încă.'; return; }
-  for (const h of hist) {
-    const d = new Date(h.id), row = document.createElement('div');
-    const a = document.createElement('span'); a.textContent = d.toLocaleDateString('ro-RO', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
-    const b = document.createElement('strong'); b.textContent = (h.climbs * h.height / 100).toFixed(1) + ' m';
-    const c = document.createElement('em'); c.textContent = `${h.climbs} × ${h.height} cm · ${fmtTime(h.ms)}`;
-    row.append(a, b, c); box.append(row);
-  }
-}
+$('newSession').onclick = async () => {
+  pause();
+  if (W) { W.active_ms = Math.round(elapsed()); markDirty(); await sync(); }
+  const done = W && W.id && (W.climbs.length || W.active_ms > 60000) ? W.id : null;
+  W = null; local.del('current'); counter.reset(); lastAnnounce = 0; trace.length = 0;
+  $('go').textContent = 'Start'; $('sync').textContent = ''; render(); drawSpark(); $('sheet').hidden = true;
+  if (done) location.href = '/sesiune/' + done;
+};
 
 // ---- Settings ----
 function fillSettings() {
   $('height').value = cfg.height; $('facing').value = cfg.facing; $('beep').checked = cfg.beep; $('voice').checked = cfg.voice;
   $('upTh').value = cfg.up; $('downTh').value = cfg.down; $('model').value = cfg.model;
-  renderHist();
+  $('newSession').disabled = !W;
 }
 $('menu').onclick = () => { fillSettings(); $('sheet').hidden = false; };
 $('close').onclick = async () => {
@@ -381,23 +371,15 @@ $('close').onclick = async () => {
   cfg.down = Math.min(cfg.up - 0.05, Math.max(0, parseFloat($('downTh').value) || 0.12));
   cfg.model = +$('model').value;
   counter.set('up', cfg.up); counter.set('down', cfg.down);
-  store.set('cfg', cfg); $('sheet').hidden = true; render(); drawSpark();
+  // The step height applies from the next session; changing it mid-session would rewrite past climbs.
+  $('sheet').hidden = true; render(); drawSpark();
+  api('POST', '/api/settings', cfg).catch(() => {});
   if (stream && prevFacing !== cfg.facing) { try { await startCamera(); counter.relevel(); } catch {} }
   if (pose && prevModel !== cfg.model) pose.setOptions({ modelComplexity: cfg.model });
 };
 $('sheet').onclick = e => { if (e.target.id === 'sheet') $('close').onclick(); };
-$('clearHist').onclick = () => { store.set('hist', []); renderHist(); };
 
-// Reset button lives in the settings sheet header area via long-press on Start: keep it explicit instead.
-const resetBtn = document.createElement('button'); resetBtn.id = 'reset'; resetBtn.textContent = 'Sesiune nouă (resetează contorul)';
-$('clearHist').before(resetBtn);
-resetBtn.onclick = () => {
-  if (running) $('go').onclick();
-  saveSession(); sessionId = null; counter.reset(); activeMs = 0; lastAnnounce = 0; trace.length = 0;
-  $('go').textContent = 'Start'; render(); drawSpark(); renderHist(); $('sheet').hidden = true;
-};
-
-render(); drawSpark();
+render(); drawSpark(); sync();
 </script>
 </body>
 </html>

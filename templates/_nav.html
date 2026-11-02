@@ -1,0 +1,9 @@
+<header class="topbar">
+  <a class="brand" href="/">Stepper</a>
+  <nav class="nav">
+    <a href="/" {% if active == 'counter' %}aria-current="page"{% endif %}>Contor</a>
+    <a href="/istoric" {% if active == 'history' %}aria-current="page"{% endif %}>Istoric</a>
+    <a href="/cont" {% if active == 'account' %}aria-current="page"{% endif %}>Cont</a>
+  </nav>
+</header>
+{% with msgs = get_flashed_messages() %}{% for m in msgs %}<div class="flash {% if 'conectat' in m %}ok{% endif %}">{{ m }}</div>{% endfor %}{% endwith %}

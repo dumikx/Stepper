@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ro">
+<head>
+{% include "_head.html" %}
+<title>Stepper · {{ 'Autentificare' if mode == 'login' else 'Cont nou' }}</title>
+<style>
+  .hero { padding-top: 6vh; display: flex; flex-direction: column; gap: 6px; }
+  .hero .big { font-family: var(--display); font-weight: 700; font-size: 64px; line-height: .9; }
+  .hero .big small { color: var(--accent); font-size: .5em; }
+  form.card button { width: 100%; font-size: 18px; }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="hero">
+    <div class="big">0.22<small>m</small></div>
+    <p class="muted" style="margin:0">Fiecare urcare pe treaptă, adunată în metri de urcare.</p>
+  </div>
+  {% with msgs = get_flashed_messages() %}{% for m in msgs %}<div class="flash">{{ m }}</div>{% endfor %}{% endwith %}
+  <form class="card" method="post">
+    <h1>{{ 'Intră în cont' if mode == 'login' else 'Cont nou' }}</h1>
+    <div class="field"><label for="username">Utilizator</label>
+      <input id="username" name="username" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" required></div>
+    <div class="field"><label for="password">Parolă</label>
+      <input id="password" name="password" type="password" autocomplete="{{ 'current-password' if mode == 'login' else 'new-password' }}" required></div>
+    {% if mode == 'register' and invite %}
+    <div class="field"><label for="invite">Cod de invitație</label>
+      <input id="invite" name="invite" type="text" autocapitalize="none" autocorrect="off" required></div>
+    {% endif %}
+    <button class="primary" type="submit">{{ 'Intră' if mode == 'login' else 'Creează contul' }}</button>
+  </form>
+  <p class="muted small" style="text-align:center">
+    {% if mode == 'login' %}Nu ai cont? <a href="/register">Creează unul</a>{% else %}Ai deja cont? <a href="/login">Intră</a>{% endif %}
+  </p>
+</main>
+</body>
+</html>

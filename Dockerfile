@@ -1,5 +1,7 @@
-# Serve the static app with plain nginx (no CSP header: MediaPipe needs WebAssembly).
-FROM nginx:1.27-alpine
-ENV PORT=8080
-COPY nginx.conf.template /etc/nginx/templates/default.conf.template
-COPY index.html /usr/share/nginx/html/index.html
+FROM python:3.12-slim
+WORKDIR /app
+ENV PYTHONUNBUFFERED=1 PORT=8080
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+CMD gunicorn -w 1 --threads 8 -b 0.0.0.0:$PORT app:app

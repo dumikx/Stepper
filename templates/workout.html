@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ro">
+<head>
+{% include "_head.html" %}
+<title>Stepper · Sesiune</title>
+<style>
+  .chartbox { position: relative; height: 260px; }
+  .legend { display: flex; gap: 16px; font-size: 13px; color: var(--muted); }
+  .legend i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+  #polarMsg { font-size: 14px; }
+  #confirmDel { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<main class="page">
+  {% set active = 'history' %}{% include "_nav.html" %}
+  <div>
+    <h1 id="title">Sesiune</h1>
+    <span class="muted small">{{ w.climbs }} urcări × {{ '%g' % w.height_cm }} cm</span>
+  </div>
+
+  <div class="tiles">
+    <div class="tile"><b>{{ '%.1f' % w.elevation_m }} m</b><span>urcare</span></div>
+    <div class="tile"><b id="dur">–</b><span>timp activ</span></div>
+    <div class="tile"><b id="rate">–</b><span>m / oră</span></div>
+    {% if w.hr %}
+    <div class="tile hr"><b>{{ w.hr.avg }}</b><span>puls mediu</span></div>
+    <div class="tile hr"><b>{{ w.hr.max }}</b><span>puls maxim</span></div>
+    <div class="tile"><b id="beats">–</b><span>bătăi / m urcat</span></div>
+    {% endif %}
+  </div>
+
+  <section class="card">
+    <h2>Desfășurare</h2>
+    <div class="legend"><span><i style="background:var(--accent)"></i>Urcare (m)</span>{% if hr %}<span><i style="background:var(--hr)"></i>Puls (bpm)</span>{% endif %}</div>
+    <div class="chartbox"><canvas id="chart" aria-label="Urcare cumulată și puls în timp"></canvas></div>
+    {% if hr_source %}<span class="muted small">Puls importat: {{ hr_source }}</span>{% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Puls din Polar</h2>
+    {% if not polar_configured %}
+      <p class="muted" style="margin:0">Importul din Polar nu e încă activat pe server.</p>
+    {% elif not polar %}
+      <p class="muted" style="margin:0">Conectează contul Polar Flow, apoi poți aduce aici pulsul înregistrat cu centura.</p>
+      <a class="btn" href="/cont">Conectează Polar</a>
+    {% else %}
+      <p class="muted small" style="margin:0">Înregistrează antrenamentul în Polar Flow în timp ce urci, sincronizează aplicația Polar, apoi apasă butonul.</p>
+      <div class="actions"><button id="polarBtn">{{ 'Reimportă pulsul' if hr else 'Importă pulsul' }}</button></div>
+      <div id="polarMsg" class="muted" hidden></div>
+    {% endif %}
+  </section>
+
+  <div class="actions">
+    <button id="delBtn" class="danger">Șterge sesiunea</button>
+    <div id="confirmDel" hidden><span>Ștergi definitiv sesiunea?</span><button id="delYes" class="danger">Da, șterge</button><button id="delNo">Nu</button></div>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<script>
+const W = {{ w|tojson }}, CLIMBS = {{ climbs|tojson }}, HR = {{ hr|tojson }};
+const fmt = ms => { const s = Math.round(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, ss = s % 60;
+  return h ? `${h}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}` : `${m}:${String(ss).padStart(2,'0')}`; };
+const d = new Date(W.started_at);
+document.getElementById('title').textContent = d.toLocaleDateString('ro-RO', { weekday: 'long', day: 'numeric', month: 'long' }) + ', ' + d.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
+document.getElementById('dur').textContent = fmt(W.active_ms);
+if (W.active_ms > 30000 && W.climbs) document.getElementById('rate').textContent = Math.round(W.elevation_m / (W.active_ms / 3600000));
+const beatsEl = document.getElementById('beats');
+if (beatsEl && W.elevation_m > 0 && W.hr) {
+  // heartbeats spent per metre climbed, over the climbing window (lower = more efficient)
+  const t0 = CLIMBS[0], t1 = CLIMBS[CLIMBS.length - 1];
+  const inWin = HR.filter(p => p[0] >= t0 && p[0] <= t1);
+  if (inWin.length > 10 && t1 > t0) {
+    const avg = inWin.reduce((a, p) => a + p[1], 0) / inWin.length;
+    beatsEl.textContent = Math.round(avg * ((t1 - t0) / 60000) / W.elevation_m);
+  }
+}
+
+// Chart: cumulative elevation (stepped) and heart rate on a shared minutes axis.
+const css = getComputedStyle(document.documentElement);
+const C = n => css.getPropertyValue(n).trim();
+const t0 = Math.min(W.started_at, HR.length ? HR[0][0] : Infinity);
+const mins = t => (t - t0) / 60000;
+const elevPts = [{ x: mins(W.started_at), y: 0 }].concat(CLIMBS.map((t, i) => ({ x: mins(t), y: (i + 1) * W.height_cm / 100 })));
+if (CLIMBS.length && W.ended_at > CLIMBS[CLIMBS.length - 1]) elevPts.push({ x: mins(W.ended_at), y: elevPts[elevPts.length - 1].y });
+const datasets = [{ label: 'Urcare (m)', data: elevPts, yAxisID: 'y', stepped: true, borderColor: C('--accent'), backgroundColor: 'rgba(255,162,76,.12)', fill: true, pointRadius: 0, borderWidth: 2 }];
+if (HR.length) datasets.push({ label: 'Puls', data: HR.map(p => ({ x: mins(p[0]), y: p[1] })), yAxisID: 'y2', borderColor: C('--hr'), pointRadius: 0, borderWidth: 1.5, tension: .2 });
+Chart.defaults.color = C('--muted'); Chart.defaults.font.family = C('--body');
+new Chart(document.getElementById('chart'), {
+  type: 'line', data: { datasets },
+  options: {
+    animation: false, maintainAspectRatio: false, parsing: false, interaction: { mode: 'nearest', axis: 'x', intersect: false },
+    plugins: { legend: { display: false }, tooltip: { callbacks: { title: it => `minutul ${it[0].parsed.x.toFixed(1)}`, label: it => it.dataset.yAxisID === 'y' ? `${it.parsed.y.toFixed(1)} m` : `${it.parsed.y} bpm` } } },
+    scales: {
+      x: { type: 'linear', title: { display: true, text: 'minute' }, grid: { color: C('--line') }, min: 0 },
+      y: { position: 'left', beginAtZero: true, title: { display: true, text: 'm' }, grid: { color: C('--line') } },
+      y2: { position: 'right', display: HR.length > 0, title: { display: true, text: 'bpm' }, grid: { display: false } }
+    }
+  }
+});
+
+const pb = document.getElementById('polarBtn');
+if (pb) pb.onclick = async () => {
+  const msg = document.getElementById('polarMsg'); pb.disabled = true; msg.hidden = false; msg.textContent = 'Caut antrenamentul în Polar…';
+  try {
+    const r = await fetch(`/api/workouts/${W.id}/polar`, { method: 'POST' }); const j = await r.json();
+    if (r.ok) { msg.textContent = `Am importat ${j.points} valori de puls.`; setTimeout(() => location.reload(), 600); }
+    else { msg.textContent = j.error || 'Importul a eșuat.'; pb.disabled = false; }
+  } catch { msg.textContent = 'Nu am putut contacta serverul.'; pb.disabled = false; }
+};
+const del = document.getElementById('delBtn'), conf = document.getElementById('confirmDel');
+del.onclick = () => { del.hidden = true; conf.hidden = false; };
+document.getElementById('delNo').onclick = () => { del.hidden = false; conf.hidden = true; };
+document.getElementById('delYes').onclick = async () => {
+  const r = await fetch(`/api/workouts/${W.id}`, { method: 'DELETE' });
+  if (r.ok) location.href = '/istoric';
+};
+</script>
+</body>
+</html>

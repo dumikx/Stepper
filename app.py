@@ -201,8 +201,7 @@ def clean_ms(v):
 @login_required
 def api_settings():
     data = request.get_json(silent=True) or {}
-    allowed = {"height": float, "facing": str, "beep": bool, "voice": bool, "up": float, "down": float, "model": int,
-               "metro": bool, "target": float, "beats": int}
+    allowed = {"height": float, "facing": str, "beep": bool, "voice": bool, "up": float, "down": float, "model": int}
     s = dict(g.user.settings or {})
     for k, t in allowed.items():
         if k in data:

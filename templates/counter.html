@@ -31,17 +31,8 @@ body { display: flex; flex-direction: column; gap: 10px; overflow: hidden; -webk
 #controls button { padding: 14px 8px; }
 #go { font-size: 20px; }
 #go:not(.running) { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-#metro { flex-direction: column; gap: 0; line-height: 1.05; }
-#metro b { font-family: var(--display); font-size: 22px; font-variant-numeric: tabular-nums; }
-#metro small { font-size: 11px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; font-weight: 400; }
-#metro.on { background: var(--panel2); border-color: var(--accent); }
-#metro.on small { color: var(--accent); }
-#metro.on.tick { border-color: var(--fg); }
-.stat.ontarget b { color: var(--up); }
-.stat.below b { color: var(--accent); }
-.adj { display: flex; align-items: center; gap: 10px; }
-.adj button { width: 48px; padding: 10px 0; font-size: 20px; }
-.adj output { min-width: 3ch; text-align: center; font-family: var(--display); font-size: 24px; font-variant-numeric: tabular-nums; }
+.adj { display: flex; gap: 6px; }
+.adj button { flex: 1; padding: 14px 0 !important; font-size: 18px; }
 #sheet { position: fixed; inset: 0; background: rgba(5,9,13,.7); display: flex; align-items: flex-end; z-index: 20; }
 #sheet .box { background: var(--panel); width: 100%; max-height: 88vh; overflow-y: auto; border-radius: 16px 16px 0 0; padding: 18px max(16px, env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 16px; -webkit-user-select: text; user-select: text; }
 #sheet h2.title { font-family: var(--display); font-size: 24px; margin: 0; letter-spacing: .03em; color: var(--fg); text-transform: none; }
@@ -81,7 +72,10 @@ input[type=checkbox] { width: 26px; height: 26px; accent-color: var(--accent); }
 <div id="controls">
   <button id="menu" aria-label="Setări">Setări</button>
   <button id="go">Start</button>
-  <button id="metro" aria-pressed="false" aria-label="Metronom de ritm"><b id="metroVal">400</b><small>metronom</small></button>
+  <div class="adj">
+    <button id="minus" aria-label="Scade o urcare">−</button>
+    <button id="plus" aria-label="Adaugă o urcare">+</button>
+  </div>
 </div>
 
 <div id="sheet" hidden>
@@ -91,12 +85,6 @@ input[type=checkbox] { width: 26px; height: 26px; accent-color: var(--accent); }
       <button id="newSession">Încheie sesiunea și începe una nouă</button>
       <span class="muted small">Sesiunea curentă e salvată în istoric pe măsură ce urci.</span>
     </div>
-    <div class="row"><label>Corecție manuală<small>urcări în sesiunea curentă</small></label>
-      <div class="adj"><button id="minus" aria-label="Scade o urcare">−</button><output id="adjCount">0</output><button id="plus" aria-label="Adaugă o urcare">+</button></div></div>
-    <h2>Metronom</h2>
-    <div class="row"><label for="target">Ritm țintă<small id="cadence">m urcați pe oră</small></label><input id="target" type="number" min="50" max="2000" step="10" inputmode="numeric"></div>
-    <div class="row"><label for="beats">Bătăi<small>la 4 pe urcare: sus-sus-jos-jos, prima accentuată</small></label><select id="beats"><option value="4">4 pe urcare (pași)</option><option value="1">1 pe urcare</option></select></div>
-    <h2>Treaptă și sunet</h2>
     <div class="row"><label for="height">Înălțime treaptă<small>cm per urcare</small></label><input id="height" type="number" min="5" max="60" step="0.5" inputmode="decimal"></div>
     <div class="row"><label for="facing">Camera</label><select id="facing"><option value="user">Față (vezi ecranul)</option><option value="environment">Spate</option></select></div>
     <div class="row"><label for="beep">Bip la fiecare urcare</label><input id="beep" type="checkbox"></div>
@@ -158,7 +146,7 @@ const local = {
   set(k, v) { try { localStorage.setItem('stepper.' + k, JSON.stringify(v)); } catch {} },
   del(k) { try { localStorage.removeItem('stepper.' + k); } catch {} }
 };
-const cfg = Object.assign({ height: 22, facing: 'user', beep: true, voice: true, up: 0.30, down: 0.12, model: 0, metro: false, target: 400, beats: 4 }, {{ settings|tojson }});
+const cfg = Object.assign({ height: 22, facing: 'user', beep: true, voice: true, up: 0.30, down: 0.12, model: 0 }, {{ settings|tojson }});
 const counter = createCounter({ up: cfg.up, down: cfg.down });
 
 // Current workout. Persisted locally on every change so a reload or crash never loses it;
@@ -208,21 +196,7 @@ function render() {
   $('elev').firstChild.nodeValue = e < 100 ? e.toFixed(1) : e.toFixed(0);
   $('climbs').textContent = nClimbs();
   const t = elapsed(); $('time').textContent = fmtTime(t);
-  const box = $('rate').parentElement;
-  box.classList.remove('ontarget', 'below');
-  if (cfg.metro && running) {
-    // While pacing: live rate over the last 60 s, coloured against the target (±5% counts as on target).
-    const now = Date.now(), span = Math.min(60000, now - W.started_at);
-    const recent = W.climbs.filter(c => c > now - span).length;
-    const live = span > 15000 ? Math.round(recent * W.height_cm / 100 / (span / 3600000)) : null;
-    $('rate').textContent = live ?? '–';
-    box.lastElementChild.textContent = 'm/oră acum';
-    if (live !== null) box.classList.add(live >= cfg.target * 0.95 ? 'ontarget' : 'below');
-  } else {
-    $('rate').textContent = t > 30000 && nClimbs() ? Math.round(e / (t / 3600000)) : '–';
-    box.lastElementChild.textContent = 'm / oră';
-  }
-  $('adjCount').textContent = nClimbs();
+  $('rate').textContent = t > 30000 && nClimbs() ? Math.round(e / (t / 3600000)) : '–';
 }
 function setStatus(kind, text) {
   if (kind + text === lastStatus) return; lastStatus = kind + text;
@@ -238,45 +212,6 @@ function beep(freq, dur) {
   const t = audio.currentTime; g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
   o.start(t); o.stop(t + dur);
 }
-// ---- Metronome ----
-// Target m/h -> climbs per minute = target / (height in m) / 60. Beats are scheduled on the audio clock
-// with a short look-ahead, so timing stays exact even when the page's timers jitter.
-let metroTimer = null, metroNext = 0, metroBeat = 0;
-const climbsPerMin = () => cfg.target / ((W ? W.height_cm : cfg.height) / 100) / 60;
-const metroActive = () => cfg.metro && running && !!audio;
-function click(at, accent) {
-  const o = audio.createOscillator(), g = audio.createGain();
-  o.type = 'square'; o.frequency.value = accent ? 1760 : 1180; o.connect(g); g.connect(audio.destination);
-  g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(accent ? 0.22 : 0.12, at + 0.003);
-  g.gain.exponentialRampToValueAtTime(0.0001, at + 0.045);
-  o.start(at); o.stop(at + 0.05);
-}
-function metroTick() {
-  const interval = 60 / (climbsPerMin() * cfg.beats);
-  while (metroNext < audio.currentTime + 0.15) {
-    const accent = metroBeat % cfg.beats === 0;
-    click(metroNext, accent && cfg.beats > 1);
-    if (accent) { const delay = Math.max(0, (metroNext - audio.currentTime) * 1000);
-      setTimeout(() => { $('metro').classList.add('tick'); setTimeout(() => $('metro').classList.remove('tick'), 120); }, delay); }
-    metroNext += interval; metroBeat++;
-  }
-}
-function metroSync() {
-  const want = metroActive();
-  if (want && !metroTimer) { metroNext = audio.currentTime + 0.1; metroBeat = 0; metroTimer = setInterval(metroTick, 25); metroTick(); }
-  if (!want && metroTimer) { clearInterval(metroTimer); metroTimer = null; }
-  $('metro').classList.toggle('on', cfg.metro);
-  $('metro').setAttribute('aria-pressed', String(cfg.metro));
-  $('metroVal').textContent = Math.round(cfg.target);
-  render();
-}
-$('metro').onclick = () => {
-  if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
-  audio.resume();
-  cfg.metro = !cfg.metro; metroSync();
-  api('POST', '/api/settings', cfg).catch(() => {});
-};
-
 function say(text) {
   if (!cfg.voice || !('speechSynthesis' in window)) return;
   const u = new SpeechSynthesisUtterance(text); u.lang = 'ro-RO'; speechSynthesis.speak(u);
@@ -284,9 +219,7 @@ function say(text) {
 function addClimb() {
   W.climbs.push(Date.now()); markDirty();
   const e = elevation();
-  // With the metronome on, the per-climb beep would clash with the beat; keep only the every-10th marker.
-  if (!metroActive()) beep(nClimbs() % 10 === 0 ? 1320 : 880, 0.12);
-  else if (nClimbs() % 10 === 0) beep(1320, 0.12);
+  beep(nClimbs() % 10 === 0 ? 1320 : 880, 0.12);
   const ten = Math.floor(e / 10) * 10;
   if (ten > lastAnnounce) { lastAnnounce = ten; say(`${ten} metri`); }
   const el = $('elev'); el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse');
@@ -382,7 +315,7 @@ function pause() {
   W.active_ms += performance.now() - startedAt; running = false;
   $('go').textContent = 'Continuă'; $('go').classList.remove('running');
   try { wakeLock && wakeLock.release(); } catch {}
-  markDirty(); sync(); metroSync();
+  markDirty(); sync(); render();
 }
 $('go').onclick = async () => {
   if (running) return pause();
@@ -409,7 +342,7 @@ $('go').onclick = async () => {
   counter.relevel(); trace.length = 0;
   running = true; startedAt = performance.now();
   $('go').textContent = 'Pauză'; $('go').classList.add('running');
-  markDirty(); sync(); metroSync();
+  markDirty(); sync();
 };
 $('plus').onclick = () => { if (!W) newWorkout(); addClimb(); };
 $('minus').onclick = () => { if (W && W.climbs.length) { W.climbs.pop(); markDirty(); render(); } };
@@ -428,13 +361,7 @@ function fillSettings() {
   $('height').value = cfg.height; $('facing').value = cfg.facing; $('beep').checked = cfg.beep; $('voice').checked = cfg.voice;
   $('upTh').value = cfg.up; $('downTh').value = cfg.down; $('model').value = cfg.model;
   $('newSession').disabled = !W;
-  $('target').value = Math.round(cfg.target); $('beats').value = cfg.beats; showCadence();
 }
-function showCadence() {
-  const t = parseFloat($('target').value) || cfg.target, h = parseFloat($('height').value) || cfg.height;
-  $('cadence').textContent = `m urcați pe oră · ${(t / (h / 100) / 60).toFixed(1)} urcări pe minut`;
-}
-$('target').oninput = showCadence; $('height').oninput = showCadence;
 $('menu').onclick = () => { fillSettings(); $('sheet').hidden = false; };
 $('close').onclick = async () => {
   const prevFacing = cfg.facing, prevModel = cfg.model;
@@ -443,18 +370,16 @@ $('close').onclick = async () => {
   cfg.up = Math.min(1, Math.max(0.1, parseFloat($('upTh').value) || 0.30));
   cfg.down = Math.min(cfg.up - 0.05, Math.max(0, parseFloat($('downTh').value) || 0.12));
   cfg.model = +$('model').value;
-  cfg.target = Math.min(2000, Math.max(50, parseFloat($('target').value) || 400));
-  cfg.beats = +$('beats').value === 1 ? 1 : 4;
   counter.set('up', cfg.up); counter.set('down', cfg.down);
   // The step height applies from the next session; changing it mid-session would rewrite past climbs.
-  $('sheet').hidden = true; metroSync(); drawSpark();
+  $('sheet').hidden = true; render(); drawSpark();
   api('POST', '/api/settings', cfg).catch(() => {});
   if (stream && prevFacing !== cfg.facing) { try { await startCamera(); counter.relevel(); } catch {} }
   if (pose && prevModel !== cfg.model) pose.setOptions({ modelComplexity: cfg.model });
 };
 $('sheet').onclick = e => { if (e.target.id === 'sheet') $('close').onclick(); };
 
-metroSync(); drawSpark(); sync();
+render(); drawSpark(); sync();
 </script>
 </body>
 </html>

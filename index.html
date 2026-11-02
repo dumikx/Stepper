@@ -279,7 +279,14 @@ async function startPose() {
     else { setStatus('ok', counter.state === 'up' ? 'Sus' : 'Jos'); trace.push(counter.d); if (trace.length > MAXTRACE) trace.shift(); drawSpark(); }
     if (res === 'climb') onClimb();
   });
-  await pose.initialize();
+  try {
+    await pose.initialize();
+  } catch (e) {
+    try { pose.close(); } catch {}
+    pose = null; // so the next Start retries loading instead of running with a dead model
+    const err = new Error(String(e && e.message || e));
+    err.stage = 'model'; throw err;
+  }
   loop();
 }
 async function loop() {
@@ -313,7 +320,12 @@ $('go').onclick = async () => {
       await startPose();
     } catch (e) {
       $('camMsg').hidden = false;
-      $('camMsg').textContent = 'Nu pot porni camera: ' + (e.message || e.name) + '. Verifică permisiunea pentru cameră în Setări > Safari.';
+      const msg = e.message || e.name;
+      $('camMsg').textContent = e.stage === 'model'
+        ? (/unsafe-eval|Content Security Policy/i.test(msg)
+            ? 'Serverul blochează WebAssembly (header CSP), deci modelul nu poate rula. Pagina trebuie servită fără acel header.'
+            : 'Nu pot încărca modelul de detecție: ' + msg + '. Verifică internetul și apasă din nou Start.')
+        : 'Nu pot porni camera: ' + msg + '. Verifică permisiunea pentru cameră în Setări > Safari.';
       setStatus('lost', 'Eroare'); return;
     }
     requestWake();

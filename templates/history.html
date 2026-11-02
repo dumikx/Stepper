@@ -30,7 +30,7 @@
     <a class="item" href="/sesiune/{{ w.id }}" data-start="{{ w.started_at }}" data-ms="{{ w.active_ms }}">
       <span class="when">–</span>
       <span class="elev">{{ '%.1f' % w.elevation_m }}<small>m</small></span>
-      <span class="meta">{{ w.climbs }} × {{ '%g' % w.height_cm }} cm · <span class="dur"></span>{% if w.hr %} · <span class="bpm">♥ {{ w.hr.avg }} bpm</span>{% endif %}</span>
+      <span class="meta">{{ w.climbs }} × {{ '%g' % w.height_cm }} cm · <span class="dur"></span>{% if w.legs.L + w.legs.R %} · S {{ w.legs.L }} / D {{ w.legs.R }}{% endif %}{% if w.hr %} · <span class="bpm">♥ {{ w.hr.avg }} bpm</span>{% endif %}</span>
     </a>
     {% endfor %}
   </div>

@@ -64,6 +64,7 @@ class Workout(db.Model):
     hr = db.Column(db.JSON)                                 # [[epoch_ms, bpm], ...] from Polar
     hr_source = db.Column(db.String(120))
     note = db.Column(db.String(200))
+    legs = db.Column(db.Text)                                # one char per climb: L, R or ? (lead leg)
 
     @property
     def n(self):
@@ -79,14 +80,23 @@ class Workout(db.Model):
             return None
         return {"avg": round(sum(vals) / len(vals)), "max": max(vals), "min": min(vals)}
 
+    def leg_counts(self):
+        s = self.legs or ""
+        return {"L": s.count("L"), "R": s.count("R"), "?": self.n - s.count("L") - s.count("R")}
+
     def summary(self):
         return {"id": self.id, "started_at": self.started_at, "ended_at": self.ended_at, "active_ms": self.active_ms,
                 "height_cm": self.height_cm, "climbs": self.n, "elevation_m": round(self.elevation_m, 2),
-                "hr": self.hr_stats(), "note": self.note}
+                "hr": self.hr_stats(), "note": self.note, "legs": self.leg_counts()}
 
 
 with app.app_context():
     db.create_all()
+    # Lightweight migration: columns added after the first deploy.
+    cols = {c["name"] for c in db.inspect(db.engine).get_columns("workout")}
+    if "legs" not in cols:
+        with db.engine.begin() as conn:
+            conn.execute(db.text("ALTER TABLE workout ADD COLUMN legs TEXT"))
 
 
 # ---------------- Auth helpers ----------------
@@ -201,7 +211,7 @@ def clean_ms(v):
 @login_required
 def api_settings():
     data = request.get_json(silent=True) or {}
-    allowed = {"height": float, "facing": str, "beep": bool, "voice": bool, "up": float, "down": float, "model": int}
+    allowed = {"height": float, "facing": str, "beep": bool, "voice": bool, "up": float, "down": float, "model": int, "swapLR": bool}
     s = dict(g.user.settings or {})
     for k, t in allowed.items():
         if k in data:
@@ -244,6 +254,8 @@ def api_workout(wid):
         w.ended_at = clean_ms(data["ended_at"])
     if "note" in data:
         w.note = str(data["note"])[:200] or None
+    if isinstance(data.get("legs"), str) and len(data["legs"]) <= 20000:
+        w.legs = "".join(c if c in "LR" else "?" for c in data["legs"])
     db.session.commit()
     return jsonify(w.summary())
 

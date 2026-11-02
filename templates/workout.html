@@ -9,6 +9,11 @@
   .legend i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
   .actions { display: flex; flex-wrap: wrap; gap: 10px; }
   #polarMsg { font-size: 14px; }
+  .legrow { display: flex; justify-content: space-between; gap: 12px; font-variant-numeric: tabular-nums; }
+  .legrow b { font-family: var(--display); font-size: 30px; line-height: 1; }
+  .legbar { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; display: flex; }
+  .legbar i { display: block; height: 100%; background: var(--accent); }
+  .legbar i + i { background: #6fb3ff; }
   #confirmDel { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 </style>
 </head>
@@ -30,6 +35,19 @@
     <div class="tile"><b id="beats">–</b><span>bătăi / m urcat</span></div>
     {% endif %}
   </div>
+
+  {% set lg = w.legs %}{% set known = lg.L + lg.R %}
+  {% if known %}
+  <section class="card legs">
+    <h2>Picior de urcare</h2>
+    <div class="legrow">
+      <span><b>{{ lg.L }}</b> stâng · {{ (lg.L * 100 / known)|round|int }}%</span>
+      <span>{{ (lg.R * 100 / known)|round|int }}% · drept <b>{{ lg.R }}</b></span>
+    </div>
+    <div class="legbar"><i style="width:{{ lg.L * 100 / known }}%"></i><i style="width:{{ lg.R * 100 / known }}%"></i></div>
+    {% if lg['?'] %}<span class="muted small">{{ lg['?'] }} urcări fără picior detectat (adăugate manual sau neclare).</span>{% endif %}
+  </section>
+  {% endif %}
 
   <section class="card">
     <h2>Desfășurare</h2>

@@ -27,6 +27,13 @@ body { display: flex; flex-direction: column; gap: 10px; overflow: hidden; -webk
 .stat { text-align: center; }
 .stat b { display: block; font-family: var(--display); font-weight: 600; font-size: min(11vw, 7vh); font-variant-numeric: tabular-nums; line-height: 1; }
 .stat span { font-size: 12px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+#legs { width: 100%; margin-top: 14px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; }
+#legs .side { font-size: 13px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+#legs .side b { font-family: var(--display); font-size: 26px; color: var(--fg); letter-spacing: 0; margin: 0 4px; font-variant-numeric: tabular-nums; }
+#legs .side.last b { color: var(--up); }
+#legBar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; display: flex; }
+#legBar i { display: block; height: 100%; background: var(--accent); transition: width .3s; }
+#legBar i + i { background: #6fb3ff; }
 #controls { display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 10px; padding-bottom: 12px; }
 #controls button { padding: 14px 8px; }
 #go { font-size: 20px; }
@@ -67,6 +74,11 @@ input[type=checkbox] { width: 26px; height: 26px; accent-color: var(--accent); }
     <div class="stat"><b id="time">0:00</b><span>timp</span></div>
     <div class="stat"><b id="rate">–</b><span>m / oră</span></div>
   </div>
+  <div id="legs" aria-label="Urcări pe fiecare picior">
+    <span class="side" id="sideL">Stâng<b id="cntL">0</b></span>
+    <div id="legBar"><i id="barL" style="width:50%"></i><i id="barR" style="width:50%"></i></div>
+    <span class="side" id="sideR"><b id="cntR">0</b>Drept</span>
+  </div>
 </main>
 
 <div id="controls">
@@ -89,6 +101,7 @@ input[type=checkbox] { width: 26px; height: 26px; accent-color: var(--accent); }
     <div class="row"><label for="facing">Camera</label><select id="facing"><option value="user">Față (vezi ecranul)</option><option value="environment">Spate</option></select></div>
     <div class="row"><label for="beep">Bip la fiecare urcare</label><input id="beep" type="checkbox"></div>
     <div class="row"><label for="voice">Anunț vocal<small>la fiecare 10 m</small></label><input id="voice" type="checkbox"></div>
+    <div class="row"><label for="swapLR">Inversează stânga / dreapta<small>dacă piciorul numărat e invers față de realitate</small></label><input id="swapLR" type="checkbox"></div>
     <h2>Detecție</h2>
     <div class="row"><label for="upTh">Prag sus<small>cât trebuie să urci, în lungimi de trunchi (implicit 0.30)</small></label><input id="upTh" type="number" min="0.1" max="1" step="0.02"></div>
     <div class="row"><label for="downTh">Prag jos<small>revenire la podea (implicit 0.12)</small></label><input id="downTh" type="number" min="0" max="0.5" step="0.02"></div>
@@ -138,6 +151,25 @@ function createCounter(opts) {
     }
   };
 }
+// Lead leg: in the ~1.7 s before a climb is detected, the leg stepping onto the box lifts its knee
+// toward the hip. a = (right knee-hip gap) - (left knee-hip gap); a > 0 means the left knee is higher.
+// The sign of the largest asymmetry in the window names the lead leg; below 0.035 it is undecided.
+function createLeadDetector(windowMs = 1700, minAsym = 0.035) {
+  let buf = [];
+  return {
+    push(t, lm) {
+      if (!lm || [23, 24, 25, 26].some(i => (lm[i].visibility ?? 1) < 0.5)) return;
+      buf.push([t, (lm[26].y - lm[24].y) - (lm[25].y - lm[23].y)]);
+      while (buf.length && buf[0][0] < t - windowMs) buf.shift();
+    },
+    decide() {
+      let best = 0;
+      for (const [, a] of buf) if (Math.abs(a) > Math.abs(best)) best = a;
+      buf = [];
+      return Math.abs(best) < minAsym ? '?' : (best > 0 ? 'L' : 'R');
+    }
+  };
+}
 // ---- END COUNTER ----
 
 const $ = id => document.getElementById(id);
@@ -146,7 +178,7 @@ const local = {
   set(k, v) { try { localStorage.setItem('stepper.' + k, JSON.stringify(v)); } catch {} },
   del(k) { try { localStorage.removeItem('stepper.' + k); } catch {} }
 };
-const cfg = Object.assign({ height: 22, facing: 'user', beep: true, voice: true, up: 0.30, down: 0.12, model: 0 }, {{ settings|tojson }});
+const cfg = Object.assign({ height: 22, facing: 'user', beep: true, voice: true, up: 0.30, down: 0.12, model: 0, swapLR: false }, {{ settings|tojson }});
 const counter = createCounter({ up: cfg.up, down: cfg.down });
 
 // Current workout. Persisted locally on every change so a reload or crash never loses it;
@@ -157,9 +189,11 @@ if (W && W.uid !== UID) W = null;    // a session left on this phone by another 
 let running = false, startedAt = 0, stream = null, pose = null, busy = false;
 let wakeLock = null, audio = null, lastAnnounce = 0, lastStatus = '', dirty = false, syncing = false;
 const trace = [];
+const lead = createLeadDetector(), frameTimes = [];
+if (W && typeof W.legs !== 'string') W.legs = '?'.repeat(W.climbs.length);
 if (W) { lastAnnounce = Math.floor(elevation() / 10) * 10; $('go').textContent = 'Continuă'; dirty = true; }
 
-function newWorkout() { W = { uid: UID, id: null, started_at: Date.now(), height_cm: cfg.height, climbs: [], active_ms: 0 }; saveLocal(); }
+function newWorkout() { W = { uid: UID, id: null, started_at: Date.now(), height_cm: cfg.height, climbs: [], legs: '', active_ms: 0 }; saveLocal(); }
 function saveLocal() { local.set('current', W); }
 
 // ---- Server sync ----
@@ -175,7 +209,7 @@ async function sync() {
   syncing = true; dirty = false;
   try {
     if (!W.id) { const r = await api('POST', '/api/workouts', { started_at: W.started_at, height_cm: W.height_cm }); W.id = r.id; saveLocal(); }
-    await api('PUT', '/api/workouts/' + W.id, { climbs: W.climbs, active_ms: Math.round(elapsed()), ended_at: Date.now() });
+    await api('PUT', '/api/workouts/' + W.id, { climbs: W.climbs, legs: W.legs, active_ms: Math.round(elapsed()), ended_at: Date.now() });
     $('sync').textContent = 'Salvat';
   } catch (e) {
     dirty = true; $('sync').textContent = 'Nesalvat · reîncerc';
@@ -197,6 +231,12 @@ function render() {
   $('climbs').textContent = nClimbs();
   const t = elapsed(); $('time').textContent = fmtTime(t);
   $('rate').textContent = t > 30000 && nClimbs() ? Math.round(e / (t / 3600000)) : '–';
+  const legs = W ? W.legs : '', nL = (legs.match(/L/g) || []).length, nR = (legs.match(/R/g) || []).length;
+  $('cntL').textContent = nL; $('cntR').textContent = nR;
+  const pL = nL + nR ? Math.round(nL / (nL + nR) * 100) : 50;
+  $('barL').style.width = pL + '%'; $('barR').style.width = (100 - pL) + '%';
+  const last = legs.slice(-1);
+  $('sideL').classList.toggle('last', last === 'L'); $('sideR').classList.toggle('last', last === 'R');
 }
 function setStatus(kind, text) {
   if (kind + text === lastStatus) return; lastStatus = kind + text;
@@ -216,8 +256,9 @@ function say(text) {
   if (!cfg.voice || !('speechSynthesis' in window)) return;
   const u = new SpeechSynthesisUtterance(text); u.lang = 'ro-RO'; speechSynthesis.speak(u);
 }
-function addClimb() {
-  W.climbs.push(Date.now()); markDirty();
+function addClimb(leg = '?') {
+  if (cfg.swapLR && leg !== '?') leg = leg === 'L' ? 'R' : 'L';
+  W.climbs.push(Date.now()); W.legs += leg; markDirty();
   const e = elevation();
   beep(nClimbs() % 10 === 0 ? 1320 : 880, 0.12);
   const ten = Math.floor(e / 10) * 10;
@@ -274,10 +315,13 @@ async function startPose() {
     const lm = r.poseLandmarks || null;
     drawPose(lm);
     if (!running) { setStatus(lm ? 'ok' : 'lost', lm ? 'Te văd' : 'Nu te văd'); return; }
+    const now = performance.now(); frameTimes.push(now); while (frameTimes[0] < now - 2000) frameTimes.shift();
+    const fps = Math.round(frameTimes.length / 2), fpsTxt = ` · ${fps} fps`;
+    lead.push(now, lm);
     const res = counter.push(lm);
-    if (res === 'lost') setStatus('lost', 'Nu te văd întreg');
-    else { setStatus('ok', counter.state === 'up' ? 'Sus' : 'Jos'); trace.push(counter.d); if (trace.length > MAXTRACE) trace.shift(); drawSpark(); }
-    if (res === 'climb') addClimb();
+    if (res === 'lost') setStatus('lost', 'Nu te văd întreg' + fpsTxt);
+    else { setStatus(fps < 5 ? 'lost' : 'ok', (counter.state === 'up' ? 'Sus' : 'Jos') + fpsTxt); trace.push(counter.d); if (trace.length > MAXTRACE) trace.shift(); drawSpark(); }
+    if (res === 'climb') addClimb(lead.decide());
   });
   try {
     await pose.initialize();
@@ -345,7 +389,7 @@ $('go').onclick = async () => {
   markDirty(); sync();
 };
 $('plus').onclick = () => { if (!W) newWorkout(); addClimb(); };
-$('minus').onclick = () => { if (W && W.climbs.length) { W.climbs.pop(); markDirty(); render(); } };
+$('minus').onclick = () => { if (W && W.climbs.length) { W.climbs.pop(); W.legs = W.legs.slice(0, W.climbs.length); markDirty(); render(); } };
 
 $('newSession').onclick = async () => {
   pause();
@@ -358,7 +402,7 @@ $('newSession').onclick = async () => {
 
 // ---- Settings ----
 function fillSettings() {
-  $('height').value = cfg.height; $('facing').value = cfg.facing; $('beep').checked = cfg.beep; $('voice').checked = cfg.voice;
+  $('height').value = cfg.height; $('facing').value = cfg.facing; $('beep').checked = cfg.beep; $('voice').checked = cfg.voice; $('swapLR').checked = cfg.swapLR;
   $('upTh').value = cfg.up; $('downTh').value = cfg.down; $('model').value = cfg.model;
   $('newSession').disabled = !W;
 }
@@ -366,7 +410,7 @@ $('menu').onclick = () => { fillSettings(); $('sheet').hidden = false; };
 $('close').onclick = async () => {
   const prevFacing = cfg.facing, prevModel = cfg.model;
   cfg.height = Math.min(60, Math.max(5, parseFloat($('height').value) || 22));
-  cfg.facing = $('facing').value; cfg.beep = $('beep').checked; cfg.voice = $('voice').checked;
+  cfg.facing = $('facing').value; cfg.beep = $('beep').checked; cfg.voice = $('voice').checked; cfg.swapLR = $('swapLR').checked;
   cfg.up = Math.min(1, Math.max(0.1, parseFloat($('upTh').value) || 0.30));
   cfg.down = Math.min(cfg.up - 0.05, Math.max(0, parseFloat($('downTh').value) || 0.12));
   cfg.model = +$('model').value;

@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f1720">
+<title>Stepper Urcare</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: one screen, camera strip on top, giant elevation readout (legible from 2–3 m), controls at the bottom. Dark only: used as a workout screen. */
+:root {
+  --bg: #0f1720;        /* night slate */
+  --panel: #17222e;
+  --line: #263544;
+  --fg: #e8eef3;
+  --muted: #8a9bab;
+  --accent: #ffa24c;    /* alpenglow */
+  --up: #5fd39a;
+  --warn: #ff6b5e;
+  --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", -apple-system, system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px;
+  padding: env(safe-area-inset-top, 0px) max(16px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(16px, env(safe-area-inset-left, 0px));
+  display: flex; flex-direction: column; gap: 10px; overflow: hidden;
+  -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+}
+header { display: flex; align-items: baseline; justify-content: space-between; padding-top: 8px; }
+header h1 { font-family: var(--display); font-weight: 600; font-size: 20px; letter-spacing: .06em; text-transform: uppercase; margin: 0; color: var(--muted); }
+#status { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+#status i { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; }
+#status.ok i { background: var(--up); }
+#status.lost i { background: var(--warn); }
+
+#cam { position: relative; width: 100%; max-height: 30vh; aspect-ratio: 3/4; margin: 0 auto; border-radius: 10px; overflow: hidden; background: #000; border: 1px solid var(--line); }
+#cam video, #cam canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+#cam.mirror video, #cam.mirror canvas { transform: scaleX(-1); }
+#camMsg { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 12px; color: var(--muted); font-size: 14px; }
+#spark { width: 100%; height: 46px; display: block; }
+
+#readout { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 0; }
+#elev { font-family: var(--display); font-weight: 700; font-size: min(34vw, 22vh); line-height: .9; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+#elev small { font-size: .38em; font-weight: 600; color: var(--accent); margin-left: .08em; }
+#elev.pulse { animation: pulse .35s ease-out; }
+@keyframes pulse { from { color: var(--up); } to { color: var(--fg); } }
+#stats { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; gap: 8px; margin-top: 10px; }
+.stat { text-align: center; }
+.stat b { display: block; font-family: var(--display); font-weight: 600; font-size: min(11vw, 7vh); font-variant-numeric: tabular-nums; line-height: 1; }
+.stat span { font-size: 12px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+
+#controls { display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 10px; padding-bottom: 12px; }
+button { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 8px; font-weight: 700; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:active { transform: scale(.97); }
+#go { background: var(--accent); color: #1b1006; border-color: var(--accent); font-size: 20px; }
+#go.running { background: var(--panel); color: var(--fg); border-color: var(--line); }
+.adj { display: flex; gap: 6px; }
+.adj button { flex: 1; padding: 14px 0; font-size: 18px; }
+
+/* Settings sheet */
+#sheet { position: fixed; inset: 0; background: rgba(5,9,13,.7); display: flex; align-items: flex-end; z-index: 20; }
+#sheet .box { background: var(--panel); width: 100%; max-height: 88vh; overflow-y: auto; border-radius: 16px 16px 0 0; padding: 18px max(16px, env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 16px; }
+#sheet h2 { font-family: var(--display); font-size: 24px; margin: 0; letter-spacing: .03em; }
+#sheet h3 { font-family: var(--display); font-size: 18px; margin: 4px 0 0; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.row label { flex: 1; }
+.row label small { display: block; color: var(--muted); font-size: 12px; }
+input[type=number] { width: 90px; font: inherit; font-size: 18px; padding: 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; text-align: right; }
+select { font: inherit; padding: 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; }
+input[type=checkbox] { width: 26px; height: 26px; accent-color: var(--accent); }
+#hist { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+#hist div { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+#hist em { color: var(--muted); font-style: normal; }
+#countdown { position: fixed; inset: 0; display: grid; place-items: center; font-family: var(--display); font-size: 40vw; font-weight: 700; color: var(--accent); background: rgba(15,23,32,.85); z-index: 30; }
+@media (prefers-reduced-motion: reduce) { #elev.pulse { animation: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Stepper</h1>
+  <div id="status"><i></i><span id="statusText">Pregătit</span></div>
+</header>
+
+<div id="cam" class="mirror">
+  <video id="video" playsinline muted autoplay></video>
+  <canvas id="overlay"></canvas>
+  <div id="camMsg">Apasă Start. Telefonul cere acces la cameră.</div>
+</div>
+<canvas id="spark"></canvas>
+
+<main id="readout">
+  <div id="elev">0.0<small>m</small></div>
+  <div id="stats">
+    <div class="stat"><b id="climbs">0</b><span>urcări</span></div>
+    <div class="stat"><b id="time">0:00</b><span>timp</span></div>
+    <div class="stat"><b id="rate">–</b><span>m / oră</span></div>
+  </div>
+</main>
+
+<div id="controls">
+  <button id="menu" aria-label="Setări și istoric">Setări</button>
+  <button id="go">Start</button>
+  <div class="adj">
+    <button id="minus" aria-label="Scade o urcare">−</button>
+    <button id="plus" aria-label="Adaugă o urcare">+</button>
+  </div>
+</div>
+
+<div id="sheet" hidden>
+  <div class="box">
+    <div class="row"><h2>Setări</h2><button id="close">Gata</button></div>
+    <div class="row"><label for="height">Înălțime treaptă<small>cm per urcare</small></label><input id="height" type="number" min="5" max="60" step="0.5" inputmode="decimal"></div>
+    <div class="row"><label for="facing">Camera</label><select id="facing"><option value="user">Față (vezi ecranul)</option><option value="environment">Spate</option></select></div>
+    <div class="row"><label for="beep">Bip la fiecare urcare</label><input id="beep" type="checkbox"></div>
+    <div class="row"><label for="voice">Anunț vocal<small>la fiecare 10 m</small></label><input id="voice" type="checkbox"></div>
+    <h3>Detecție</h3>
+    <div class="row"><label for="upTh">Prag sus<small>cât trebuie să urci, în lungimi de trunchi (implicit 0.30)</small></label><input id="upTh" type="number" min="0.1" max="1" step="0.02"></div>
+    <div class="row"><label for="downTh">Prag jos<small>revenire la podea (implicit 0.12)</small></label><input id="downTh" type="number" min="0" max="0.5" step="0.02"></div>
+    <div class="row"><label for="model">Model<small>Lite e mai rapid; Full e mai precis</small></label><select id="model"><option value="0">Lite</option><option value="1">Full</option></select></div>
+    <h3>Istoric</h3>
+    <div id="hist"></div>
+    <button id="clearHist">Șterge istoricul</button>
+  </div>
+</div>
+<div id="countdown" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js" crossorigin="anonymous"></script>
+<script>
+// ---- COUNTER (pure logic; validated offline against a recorded session) ----
+// Signal: vertical position of the torso centre (mid of shoulders+hips), normalised by torso length,
+// so it is independent of distance to the camera. d = how far above the floor level, in torso lengths.
+function createCounter(opts) {
+  const o = Object.assign({ up: 0.30, down: 0.12, minVis: 0.5 }, opts);
+  let state = 'down', floor = null, torso = null, climbs = 0, d = 0, jumpRun = 0;
+  return {
+    reset() { state = 'down'; floor = null; torso = null; climbs = 0; d = 0; jumpRun = 0; },
+    relevel() { floor = null; torso = null; state = 'down'; jumpRun = 0; },
+    set(k, v) { o[k] = v; },
+    get climbs() { return climbs; }, set climbs(v) { climbs = Math.max(0, v); },
+    get d() { return d; }, get state() { return state; }, get opts() { return o; },
+    // lm: 33 landmarks {x,y,visibility}; returns 'climb' when a new climb is detected, 'lost' if unusable, else null
+    push(lm) {
+      if (!lm) return 'lost';
+      const k = [11, 12, 23, 24];
+      if (k.some(i => (lm[i].visibility ?? 1) < o.minVis)) return 'lost';
+      const sy = (lm[11].y + lm[12].y) / 2, hy = (lm[23].y + lm[24].y) / 2;
+      const y = (sy + hy) / 2, tl = hy - sy;
+      if (tl <= 0.02) return 'lost';
+      if (torso !== null && Math.abs(tl / torso - 1) > 0.35) {
+        // sudden scale jump: someone walking to/from the camera. Ignore; re-level if it persists ~2 s.
+        if (++jumpRun > 30) { torso = tl; floor = y; state = 'down'; jumpRun = 0; }
+        return 'lost';
+      }
+      jumpRun = 0;
+      torso = torso === null ? tl : torso + 0.05 * (tl - torso);
+      if (floor === null) floor = y;
+      d = (floor - y) / torso;
+      if (state === 'down') {
+        floor += (y > floor ? 0.1 : 0.02) * (y - floor);
+        if (d > o.up) { state = 'up'; climbs++; return 'climb'; }
+      } else if (d < o.down) {
+        state = 'down';
+      }
+      return null;
+    }
+  };
+}
+// ---- END COUNTER ----
+
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, def) { try { const v = localStorage.getItem('stepper.' + k); return v === null ? def : JSON.parse(v); } catch { return def; } },
+  set(k, v) { try { localStorage.setItem('stepper.' + k, JSON.stringify(v)); } catch {} }
+};
+const cfg = Object.assign({ height: 22, facing: 'user', beep: true, voice: true, up: 0.30, down: 0.12, model: 0 }, store.get('cfg', {}));
+const counter = createCounter({ up: cfg.up, down: cfg.down });
+
+let running = false, startedAt = 0, activeMs = 0, stream = null, pose = null, busy = false;
+let wakeLock = null, audio = null, lastAnnounce = 0, lastStatus = '';
+const trace = []; // recent d values for the sparkline
+
+// ---- UI ----
+function fmtTime(ms) { const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, ss = s % 60;
+  return h ? `${h}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}` : `${m}:${String(ss).padStart(2,'0')}`; }
+function elapsed() { return activeMs + (running ? performance.now() - startedAt : 0); }
+function elevation() { return counter.climbs * cfg.height / 100; }
+function render() {
+  const e = elevation();
+  $('elev').firstChild.nodeValue = e < 100 ? e.toFixed(1) : e.toFixed(0);
+  $('climbs').textContent = counter.climbs;
+  const t = elapsed(); $('time').textContent = fmtTime(t);
+  $('rate').textContent = t > 30000 && counter.climbs ? Math.round(e / (t / 3600000)) : '–';
+}
+function setStatus(kind, text) {
+  if (kind + text === lastStatus) return; lastStatus = kind + text;
+  $('status').className = kind; $('statusText').textContent = text;
+}
+setInterval(() => { if (running) render(); }, 500);
+
+// ---- Feedback ----
+function beep(freq, dur) {
+  if (!cfg.beep || !audio) return;
+  const o = audio.createOscillator(), g = audio.createGain();
+  o.frequency.value = freq; o.connect(g); g.connect(audio.destination);
+  const t = audio.currentTime; g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.start(t); o.stop(t + dur);
+}
+function say(text) {
+  if (!cfg.voice || !('speechSynthesis' in window)) return;
+  const u = new SpeechSynthesisUtterance(text); u.lang = 'ro-RO'; speechSynthesis.speak(u);
+}
+function onClimb() {
+  const e = elevation();
+  beep(counter.climbs % 10 === 0 ? 1320 : 880, 0.12);
+  const ten = Math.floor(e / 10) * 10;
+  if (ten > lastAnnounce) { lastAnnounce = ten; say(`${ten} metri`); }
+  const el = $('elev'); el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse');
+  render();
+}
+
+// ---- Drawing ----
+const EDGES = [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]];
+function drawPose(lm) {
+  const c = $('overlay'), v = $('video');
+  if (c.width !== v.videoWidth) { c.width = v.videoWidth; c.height = v.videoHeight; }
+  const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height);
+  if (!lm) return;
+  const W = c.width, H = c.height;
+  x.lineWidth = Math.max(2, W / 160); x.strokeStyle = counter.state === 'up' ? '#5fd39a' : '#ffa24c';
+  x.beginPath();
+  for (const [a, b] of EDGES) { x.moveTo(lm[a].x * W, lm[a].y * H); x.lineTo(lm[b].x * W, lm[b].y * H); }
+  x.stroke();
+  const cy = ((lm[11].y + lm[12].y + lm[23].y + lm[24].y) / 4) * H, cx = ((lm[23].x + lm[24].x) / 2) * W;
+  x.fillStyle = '#e8eef3'; x.beginPath(); x.arc(cx, cy, Math.max(4, W / 70), 0, 7); x.fill();
+}
+function drawSpark() {
+  const c = $('spark'), r = c.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  if (c.width !== Math.round(r.width * dpr)) { c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr); }
+  const x = c.getContext('2d'), W = c.width, H = c.height; x.clearRect(0, 0, W, H);
+  const lo = -0.2, hi = 0.8, Y = v => H - (Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo) * H;
+  x.lineWidth = dpr; x.setLineDash([4 * dpr, 4 * dpr]);
+  x.strokeStyle = '#5fd39a88'; x.beginPath(); x.moveTo(0, Y(cfg.up)); x.lineTo(W, Y(cfg.up)); x.stroke();
+  x.strokeStyle = '#ffa24c88'; x.beginPath(); x.moveTo(0, Y(cfg.down)); x.lineTo(W, Y(cfg.down)); x.stroke();
+  x.setLineDash([]);
+  if (trace.length < 2) return;
+  x.strokeStyle = '#e8eef3'; x.lineWidth = 2 * dpr; x.beginPath();
+  trace.forEach((v, i) => { const px = i / (MAXTRACE - 1) * W; i ? x.lineTo(px, Y(v)) : x.moveTo(px, Y(v)); });
+  x.stroke();
+}
+const MAXTRACE = 150;
+
+// ---- Camera + pose ----
+async function startCamera() {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: cfg.facing, width: { ideal: 640 }, height: { ideal: 480 } } });
+  const v = $('video'); v.srcObject = stream; await v.play();
+  $('cam').classList.toggle('mirror', cfg.facing === 'user');
+  $('camMsg').hidden = true;
+}
+async function startPose() {
+  if (pose) return;
+  setStatus('', 'Încarc modelul…');
+  pose = new Pose({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${f}` });
+  pose.setOptions({ modelComplexity: +cfg.model, smoothLandmarks: true, enableSegmentation: false, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+  pose.onResults(r => {
+    const lm = r.poseLandmarks || null;
+    drawPose(lm);
+    if (!running) { setStatus(lm ? 'ok' : 'lost', lm ? 'Te văd' : 'Nu te văd'); return; }
+    const res = counter.push(lm);
+    if (res === 'lost') setStatus('lost', 'Nu te văd întreg');
+    else { setStatus('ok', counter.state === 'up' ? 'Sus' : 'Jos'); trace.push(counter.d); if (trace.length > MAXTRACE) trace.shift(); drawSpark(); }
+    if (res === 'climb') onClimb();
+  });
+  await pose.initialize();
+  loop();
+}
+async function loop() {
+  const v = $('video');
+  if (!busy && v.readyState >= 2) {
+    busy = true;
+    try { await pose.send({ image: v }); } catch (e) { console.error(e); }
+    busy = false;
+  }
+  requestAnimationFrame(loop);
+}
+async function requestWake() {
+  try { if ('wakeLock' in navigator && document.visibilityState === 'visible') wakeLock = await navigator.wakeLock.request('screen'); } catch {}
+}
+document.addEventListener('visibilitychange', () => { if (running && document.visibilityState === 'visible') requestWake(); });
+
+// ---- Session ----
+function countdown(n) {
+  return new Promise(res => {
+    const el = $('countdown'); el.hidden = false; el.textContent = n;
+    const t = setInterval(() => { n--; if (n <= 0) { clearInterval(t); el.hidden = true; res(); } else { el.textContent = n; beep(660, 0.08); } }, 1000);
+  });
+}
+$('go').onclick = async () => {
+  if (!running) {
+    try {
+      if (!audio) { audio = new (window.AudioContext || window.webkitAudioContext)(); }
+      audio.resume();
+      if ('speechSynthesis' in window) speechSynthesis.speak(new SpeechSynthesisUtterance('')); // unlock on iOS
+      if (!stream) await startCamera();
+      await startPose();
+    } catch (e) {
+      $('camMsg').hidden = false;
+      $('camMsg').textContent = 'Nu pot porni camera: ' + (e.message || e.name) + '. Verifică permisiunea pentru cameră în Setări > Safari.';
+      setStatus('lost', 'Eroare'); return;
+    }
+    requestWake();
+    if (activeMs === 0) await countdown(5);
+    counter.relevel(); trace.length = 0;
+    running = true; startedAt = performance.now();
+    $('go').textContent = 'Pauză'; $('go').classList.add('running');
+  } else {
+    activeMs += performance.now() - startedAt; running = false;
+    $('go').textContent = 'Continuă'; $('go').classList.remove('running');
+    try { wakeLock && wakeLock.release(); } catch {}
+    saveSession(); render();
+  }
+};
+$('plus').onclick = () => { counter.climbs = counter.climbs + 1; render(); saveSession(); };
+$('minus').onclick = () => { counter.climbs = counter.climbs - 1; render(); saveSession(); };
+
+// One history entry per session; a session ends when Reset is pressed (in Settings) or the page reloads.
+let sessionId = null;
+function saveSession() {
+  if (!counter.climbs && !activeMs) return;
+  const hist = store.get('hist', []);
+  if (!sessionId) sessionId = Date.now();
+  const entry = { id: sessionId, climbs: counter.climbs, height: cfg.height, ms: Math.round(elapsed()) };
+  const i = hist.findIndex(h => h.id === sessionId);
+  if (i >= 0) hist[i] = entry; else hist.unshift(entry);
+  store.set('hist', hist.slice(0, 200));
+}
+function renderHist() {
+  const hist = store.get('hist', []), box = $('hist'); box.textContent = '';
+  if (!hist.length) { box.textContent = 'Nicio sesiune salvată încă.'; return; }
+  for (const h of hist) {
+    const d = new Date(h.id), row = document.createElement('div');
+    const a = document.createElement('span'); a.textContent = d.toLocaleDateString('ro-RO', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
+    const b = document.createElement('strong'); b.textContent = (h.climbs * h.height / 100).toFixed(1) + ' m';
+    const c = document.createElement('em'); c.textContent = `${h.climbs} × ${h.height} cm · ${fmtTime(h.ms)}`;
+    row.append(a, b, c); box.append(row);
+  }
+}
+
+// ---- Settings ----
+function fillSettings() {
+  $('height').value = cfg.height; $('facing').value = cfg.facing; $('beep').checked = cfg.beep; $('voice').checked = cfg.voice;
+  $('upTh').value = cfg.up; $('downTh').value = cfg.down; $('model').value = cfg.model;
+  renderHist();
+}
+$('menu').onclick = () => { fillSettings(); $('sheet').hidden = false; };
+$('close').onclick = async () => {
+  const prevFacing = cfg.facing, prevModel = cfg.model;
+  cfg.height = Math.min(60, Math.max(5, parseFloat($('height').value) || 22));
+  cfg.facing = $('facing').value; cfg.beep = $('beep').checked; cfg.voice = $('voice').checked;
+  cfg.up = Math.min(1, Math.max(0.1, parseFloat($('upTh').value) || 0.30));
+  cfg.down = Math.min(cfg.up - 0.05, Math.max(0, parseFloat($('downTh').value) || 0.12));
+  cfg.model = +$('model').value;
+  counter.set('up', cfg.up); counter.set('down', cfg.down);
+  store.set('cfg', cfg); $('sheet').hidden = true; render(); drawSpark();
+  if (stream && prevFacing !== cfg.facing) { try { await startCamera(); counter.relevel(); } catch {} }
+  if (pose && prevModel !== cfg.model) pose.setOptions({ modelComplexity: cfg.model });
+};
+$('sheet').onclick = e => { if (e.target.id === 'sheet') $('close').onclick(); };
+$('clearHist').onclick = () => { store.set('hist', []); renderHist(); };
+
+// Reset button lives in the settings sheet header area via long-press on Start: keep it explicit instead.
+const resetBtn = document.createElement('button'); resetBtn.id = 'reset'; resetBtn.textContent = 'Sesiune nouă (resetează contorul)';
+$('clearHist').before(resetBtn);
+resetBtn.onclick = () => {
+  if (running) $('go').onclick();
+  saveSession(); sessionId = null; counter.reset(); activeMs = 0; lastAnnounce = 0; trace.length = 0;
+  $('go').textContent = 'Start'; render(); drawSpark(); renderHist(); $('sheet').hidden = true;
+};
+
+render(); drawSpark();
+</script>
+</body>
+</html>

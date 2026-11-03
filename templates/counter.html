@@ -8,6 +8,12 @@ html, body { height: 100%; }
 body { display: flex; flex-direction: column; gap: 10px; overflow: hidden; -webkit-user-select: none; user-select: none; }
 .topbar .nav a { padding: 6px 10px; font-size: 13px; }
 #status { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+#hrBtn { padding: 6px 12px; border-radius: 999px; font-size: 14px; gap: 6px; }
+#hrBtn .heart { color: var(--hr); }
+#hrBtn b { font-family: var(--display); font-size: 20px; font-variant-numeric: tabular-nums; line-height: 1; }
+#hrBtn.live { border-color: var(--hr); }
+#hrBtn.stale b { color: var(--muted); }
+.topbar .right { display: flex; align-items: center; gap: 6px; }
 #status i { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; }
 #status.ok i { background: var(--up); }
 #status.lost i { background: var(--warn); }
@@ -57,7 +63,10 @@ input[type=checkbox] { width: 26px; height: 26px; accent-color: var(--accent); }
 <body>
 <header class="topbar">
   <div id="status"><i></i><span id="statusText">Pregătit</span></div>
-  <nav class="nav"><a href="/istoric">Istoric</a><a href="/cont">Cont</a></nav>
+  <div class="right">
+    <button id="hrBtn" hidden aria-label="Conectează centura de puls"><span class="heart">♥</span><b id="hrVal">Puls</b></button>
+    <nav class="nav"><a href="/istoric">Istoric</a><a href="/cont">Cont</a></nav>
+  </div>
 </header>
 
 <div id="cam" class="mirror">
@@ -101,6 +110,7 @@ input[type=checkbox] { width: 26px; height: 26px; accent-color: var(--accent); }
     <div class="row"><label for="facing">Camera</label><select id="facing"><option value="user">Față (vezi ecranul)</option><option value="environment">Spate</option></select></div>
     <div class="row"><label for="beep">Bip la fiecare urcare</label><input id="beep" type="checkbox"></div>
     <div class="row"><label for="voice">Anunț vocal<small>la fiecare 10 m</small></label><input id="voice" type="checkbox"></div>
+    <div class="row" id="hrHelp"><label>Puls live<small id="hrHelpTxt"></small></label></div>
     <div class="row"><label for="swapLR">Inversează stânga / dreapta<small>dacă piciorul numărat e invers față de realitate</small></label><input id="swapLR" type="checkbox"></div>
     <h2>Detecție</h2>
     <div class="row"><label for="upTh">Prag sus<small>cât trebuie să urci, în lungimi de trunchi (implicit 0.30)</small></label><input id="upTh" type="number" min="0.1" max="1" step="0.02"></div>
@@ -190,10 +200,51 @@ let running = false, startedAt = 0, stream = null, pose = null, busy = false;
 let wakeLock = null, audio = null, lastAnnounce = 0, lastStatus = '', dirty = false, syncing = false;
 const trace = [];
 const lead = createLeadDetector(), frameTimes = [];
+
+// ---- Live heart rate (standard Bluetooth Heart Rate service: Polar H9/H10 and most chest straps) ----
+// Needs Web Bluetooth: Chrome on Android/desktop; on iPhone only through a Safari extension that adds it.
+const HR = { dev: null, bpm: null, at: 0, lastSaved: 0 };
+const hasBT = !!(navigator.bluetooth && navigator.bluetooth.requestDevice);
+function parseHR(dv) { const flags = dv.getUint8(0); return flags & 1 ? dv.getUint16(1, true) : dv.getUint8(1); }
+function showHR() {
+  const fresh = HR.bpm && Date.now() - HR.at < 5000;
+  $('hrVal').textContent = HR.dev ? (fresh ? HR.bpm : '…') : 'Puls';
+  $('hrBtn').classList.toggle('live', !!HR.dev); $('hrBtn').classList.toggle('stale', !!HR.dev && !fresh);
+}
+async function hrSubscribe(dev) {
+  const server = await dev.gatt.connect();
+  const ch = await (await server.getPrimaryService('heart_rate')).getCharacteristic('heart_rate_measurement');
+  ch.addEventListener('characteristicvaluechanged', e => {
+    const bpm = parseHR(e.target.value); if (bpm < 25 || bpm > 250) return;
+    HR.bpm = bpm; HR.at = Date.now(); showHR();
+    // keep one sample every 2 s while a session is running
+    if (running && W && HR.at - HR.lastSaved >= 2000) { (W.hr = W.hr || []).push([HR.at, bpm]); HR.lastSaved = HR.at; markDirty(); }
+  });
+  await ch.startNotifications();
+}
+async function hrConnect() {
+  try {
+    const dev = await navigator.bluetooth.requestDevice({ filters: [{ services: ['heart_rate'] }] });
+    HR.dev = dev; showHR();
+    dev.addEventListener('gattserverdisconnected', async () => {
+      // the strap drops out when you move away or it loses skin contact; retry a few times
+      for (let i = 0; i < 5 && HR.dev === dev; i++) {
+        await new Promise(r => setTimeout(r, 2000 * (i + 1)));
+        try { await hrSubscribe(dev); return; } catch {}
+      }
+      if (HR.dev === dev) { HR.dev = null; showHR(); }
+    });
+    await hrSubscribe(dev);
+  } catch (e) {
+    if (e && e.name !== 'NotFoundError') { HR.dev = null; showHR(); setStatus('lost', 'Puls: ' + (e.message || e.name)); }
+  }
+}
+if (hasBT) { $('hrBtn').hidden = false; $('hrBtn').onclick = () => { if (!HR.dev) hrConnect(); }; }
+setInterval(showHR, 2000);
 if (W && typeof W.legs !== 'string') W.legs = '?'.repeat(W.climbs.length);
 if (W) { lastAnnounce = Math.floor(elevation() / 10) * 10; $('go').textContent = 'Continuă'; dirty = true; }
 
-function newWorkout() { W = { uid: UID, id: null, started_at: Date.now(), height_cm: cfg.height, climbs: [], legs: '', active_ms: 0 }; saveLocal(); }
+function newWorkout() { W = { uid: UID, id: null, started_at: Date.now(), height_cm: cfg.height, climbs: [], legs: '', hr: [], active_ms: 0 }; saveLocal(); }
 function saveLocal() { local.set('current', W); }
 
 // ---- Server sync ----
@@ -209,7 +260,7 @@ async function sync() {
   syncing = true; dirty = false;
   try {
     if (!W.id) { const r = await api('POST', '/api/workouts', { started_at: W.started_at, height_cm: W.height_cm }); W.id = r.id; saveLocal(); }
-    await api('PUT', '/api/workouts/' + W.id, { climbs: W.climbs, legs: W.legs, active_ms: Math.round(elapsed()), ended_at: Date.now() });
+    await api('PUT', '/api/workouts/' + W.id, { climbs: W.climbs, legs: W.legs, hr: W.hr && W.hr.length ? W.hr : undefined, active_ms: Math.round(elapsed()), ended_at: Date.now() });
     $('sync').textContent = 'Salvat';
   } catch (e) {
     dirty = true; $('sync').textContent = 'Nesalvat · reîncerc';
@@ -402,6 +453,9 @@ $('newSession').onclick = async () => {
 
 // ---- Settings ----
 function fillSettings() {
+  $('hrHelpTxt').textContent = hasBT
+    ? (HR.dev ? `Conectat: ${HR.dev.name || 'centură'}` : 'Apasă ♥ Puls din colțul de sus ca să alegi centura.')
+    : 'Browserul ăsta nu are Bluetooth pentru pagini web. Pe iPhone: instalează extensia beacio, activeaz-o în Safari și deschide aplicația din Safari (nu de pe ecranul principal).';
   $('height').value = cfg.height; $('facing').value = cfg.facing; $('beep').checked = cfg.beep; $('voice').checked = cfg.voice; $('swapLR').checked = cfg.swapLR;
   $('upTh').value = cfg.up; $('downTh').value = cfg.down; $('model').value = cfg.model;
   $('newSession').disabled = !W;

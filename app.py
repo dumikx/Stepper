@@ -258,6 +258,13 @@ def api_workout(wid):
         w.ended_at = clean_ms(data["ended_at"])
     if "note" in data:
         w.note = str(data["note"])[:200] or None
+    if isinstance(data.get("hr"), list) and 0 < len(data["hr"]) <= 20000 and not (w.hr_source or "").startswith("Polar"):
+        pts = []
+        for p in data["hr"]:
+            if isinstance(p, list) and len(p) == 2 and clean_ms(p[0]) and isinstance(p[1], (int, float)) and 25 <= p[1] <= 250:
+                pts.append([clean_ms(p[0]), int(p[1])])
+        if pts:
+            w.hr, w.hr_source = pts, "live, centură Bluetooth"
     if isinstance(data.get("legs"), str) and len(data["legs"]) <= 20000:
         w.legs = "".join(c if c in "LR" else "?" for c in data["legs"])
     db.session.commit()

@@ -53,7 +53,7 @@
     <h2>Desfășurare</h2>
     <div class="legend"><span><i style="background:var(--accent)"></i>Urcare (m)</span>{% if hr %}<span><i style="background:var(--hr)"></i>Puls (bpm)</span>{% endif %}</div>
     <div class="chartbox"><canvas id="chart" aria-label="Urcare cumulată și puls în timp"></canvas></div>
-    {% if hr_source %}<span class="muted small">Puls importat: {{ hr_source }}</span>{% endif %}
+    {% if hr_source %}<span class="muted small">Sursa pulsului: {{ hr_source }}</span>{% endif %}
   </section>
 
   <section class="card">

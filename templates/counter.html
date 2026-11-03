@@ -13,6 +13,7 @@ body { display: flex; flex-direction: column; gap: 10px; overflow: hidden; -webk
 #hrBtn b { font-family: var(--display); font-size: 20px; font-variant-numeric: tabular-nums; line-height: 1; }
 #hrBtn.live { border-color: var(--hr); }
 #hrBtn.stale b { color: var(--muted); }
+#hrBtn.nobt { opacity: .55; }
 .topbar .right { display: flex; align-items: center; gap: 6px; }
 #status i { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; }
 #status.ok i { background: var(--up); }
@@ -64,7 +65,7 @@ input[type=checkbox] { width: 26px; height: 26px; accent-color: var(--accent); }
 <header class="topbar">
   <div id="status"><i></i><span id="statusText">Pregătit</span></div>
   <div class="right">
-    <button id="hrBtn" hidden aria-label="Conectează centura de puls"><span class="heart">♥</span><b id="hrVal">Puls</b></button>
+    <button id="hrBtn" aria-label="Conectează centura de puls"><span class="heart">♥</span><b id="hrVal">Puls</b></button>
     <nav class="nav"><a href="/istoric">Istoric</a><a href="/cont">Cont</a></nav>
   </div>
 </header>
@@ -239,7 +240,11 @@ async function hrConnect() {
     if (e && e.name !== 'NotFoundError') { HR.dev = null; showHR(); setStatus('lost', 'Puls: ' + (e.message || e.name)); }
   }
 }
-if (hasBT) { $('hrBtn').hidden = false; $('hrBtn').onclick = () => { if (!HR.dev) hrConnect(); }; }
+$('hrBtn').classList.toggle('nobt', !hasBT);
+$('hrBtn').onclick = () => {
+  if (hasBT) { if (!HR.dev) hrConnect(); return; }
+  fillSettings(); $('sheet').hidden = false; $('hrHelp').scrollIntoView({ block: 'center' });
+};
 setInterval(showHR, 2000);
 if (W && typeof W.legs !== 'string') W.legs = '?'.repeat(W.climbs.length);
 if (W) { lastAnnounce = Math.floor(elevation() / 10) * 10; $('go').textContent = 'Continuă'; dirty = true; }
@@ -455,7 +460,9 @@ $('newSession').onclick = async () => {
 function fillSettings() {
   $('hrHelpTxt').textContent = hasBT
     ? (HR.dev ? `Conectat: ${HR.dev.name || 'centură'}` : 'Apasă ♥ Puls din colțul de sus ca să alegi centura.')
-    : 'Browserul ăsta nu are Bluetooth pentru pagini web. Pe iPhone: instalează extensia beacio, activeaz-o în Safari și deschide aplicația din Safari (nu de pe ecranul principal).';
+    : (navigator.standalone || matchMedia('(display-mode: standalone)').matches
+        ? 'Ai deschis aplicația de pe ecranul principal, unde extensiile Safari nu rulează. Deschide-o din Safari: adaug-o din nou pe ecranul principal cu „Deschide ca aplicație web” dezactivat.'
+        : 'Browserul ăsta nu are Bluetooth pentru pagini web. Pe iPhone: instalează extensia beacio, activeaz-o în Safari pentru acest site, apoi reîncarcă pagina.');
   $('height').value = cfg.height; $('facing').value = cfg.facing; $('beep').checked = cfg.beep; $('voice').checked = cfg.voice; $('swapLR').checked = cfg.swapLR;
   $('upTh').value = cfg.up; $('downTh').value = cfg.down; $('model').value = cfg.model;
   $('newSession').disabled = !W;

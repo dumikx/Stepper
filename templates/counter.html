@@ -28,6 +28,17 @@ body { display: flex; flex-direction: column; gap: 10px; overflow: hidden; -webk
 #readout { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 0; }
 #elev { font-family: var(--display); font-weight: 700; font-size: min(34vw, 22vh); line-height: .9; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
 #elev small { font-size: .38em; font-weight: 600; color: var(--accent); margin-left: .08em; }
+/* With a strap connected: elevation shrinks a little and heart rate gets its own big line. */
+#hrBig { display: none; align-items: baseline; gap: .12em; font-family: var(--display); font-weight: 700; font-size: min(26vw, 14vh); line-height: .95; color: var(--hr); font-variant-numeric: tabular-nums; }
+#hrBig .heart { font-size: .45em; transform: translateY(-.15em); }
+#hrBig small { font-size: .3em; font-weight: 600; color: var(--muted); letter-spacing: .04em; }
+#hrBig.stale b { color: var(--muted); }
+#hrBig.beat .heart { animation: beat .3s ease-out; }
+@keyframes beat { 40% { transform: translateY(-.15em) scale(1.25); } }
+body.with-hr #hrBig { display: flex; }
+body.with-hr #elev { font-size: min(28vw, 16vh); }
+body.with-hr #stats { margin-top: 6px; }
+body.with-hr #hrBtn b { display: none; }
 #elev.pulse { animation: pulse .35s ease-out; }
 @keyframes pulse { from { color: var(--up); } to { color: var(--fg); } }
 #stats { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; gap: 8px; margin-top: 10px; }
@@ -79,6 +90,7 @@ input[type=checkbox] { width: 26px; height: 26px; accent-color: var(--accent); }
 
 <main id="readout">
   <div id="elev">0.0<small>m</small></div>
+  <div id="hrBig" aria-live="off"><span class="heart">♥</span><b id="hrBigVal">–</b><small>bpm</small></div>
   <div id="stats">
     <div class="stat"><b id="climbs">0</b><span>urcări</span></div>
     <div class="stat"><b id="time">0:00</b><span>timp</span></div>
@@ -211,6 +223,9 @@ function showHR() {
   const fresh = HR.bpm && Date.now() - HR.at < 5000;
   $('hrVal').textContent = HR.dev ? (fresh ? HR.bpm : '…') : 'Puls';
   $('hrBtn').classList.toggle('live', !!HR.dev); $('hrBtn').classList.toggle('stale', !!HR.dev && !fresh);
+  document.body.classList.toggle('with-hr', !!HR.dev);
+  $('hrBigVal').textContent = fresh ? HR.bpm : '–';
+  $('hrBig').classList.toggle('stale', !fresh);
 }
 async function hrSubscribe(dev) {
   const server = await dev.gatt.connect();
@@ -218,6 +233,7 @@ async function hrSubscribe(dev) {
   ch.addEventListener('characteristicvaluechanged', e => {
     const bpm = parseHR(e.target.value); if (bpm < 25 || bpm > 250) return;
     HR.bpm = bpm; HR.at = Date.now(); showHR();
+    const hb = $('hrBig'); hb.classList.remove('beat'); void hb.offsetWidth; hb.classList.add('beat');
     // keep one sample every 2 s while a session is running
     if (running && W && HR.at - HR.lastSaved >= 2000) { (W.hr = W.hr || []).push([HR.at, bpm]); HR.lastSaved = HR.at; markDirty(); }
   });

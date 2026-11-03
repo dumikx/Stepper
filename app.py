@@ -67,6 +67,7 @@ class Workout(db.Model):
     hr_source = db.Column(db.String(120))
     note = db.Column(db.String(200))
     legs = db.Column(db.Text)                                # one char per climb: L, R or ? (lead leg)
+    loads = db.Column(db.JSON)                               # per climb: [vest kg, kg per ankle]
 
     @property
     def n(self):
@@ -86,19 +87,30 @@ class Workout(db.Model):
         s = self.legs or ""
         return {"L": s.count("L"), "R": s.count("R"), "?": self.n - s.count("L") - s.count("R")}
 
+    def load_stats(self):
+        loads = (self.loads or [])[: self.n]
+        if not any(v or a for v, a in loads):
+            return None
+        kg = [v + 2 * a for v, a in loads]
+        return {"volume_kgm": round(sum(kg) * self.height_cm / 100),
+                "max_kg": max(kg), "vest_max": max(v for v, _ in loads), "ankle_max": max(a for _, a in loads),
+                "loaded_climbs": sum(1 for k in kg if k)}
+
     def summary(self):
         return {"id": self.id, "started_at": self.started_at, "ended_at": self.ended_at, "active_ms": self.active_ms,
                 "height_cm": self.height_cm, "climbs": self.n, "elevation_m": round(self.elevation_m, 2),
-                "hr": self.hr_stats(), "note": self.note, "legs": self.leg_counts()}
+                "hr": self.hr_stats(), "note": self.note, "legs": self.leg_counts(),
+                "load": self.load_stats()}
 
 
 with app.app_context():
     db.create_all()
     # Lightweight migration: columns added after the first deploy.
     cols = {c["name"] for c in db.inspect(db.engine).get_columns("workout")}
-    if "legs" not in cols:
-        with db.engine.begin() as conn:
-            conn.execute(db.text("ALTER TABLE workout ADD COLUMN legs TEXT"))
+    for name, ddl in (("legs", "TEXT"), ("loads", "JSON")):
+        if name not in cols:
+            with db.engine.begin() as conn:
+                conn.execute(db.text(f"ALTER TABLE workout ADD COLUMN {name} {ddl}"))
 
 
 # ---------------- Auth helpers ----------------
@@ -177,7 +189,8 @@ def counter():
 def history():
     ws = Workout.query.filter_by(user_id=g.user.id).order_by(Workout.started_at.desc()).limit(500).all()
     ws = [w for w in ws if w.n or (w.active_ms or 0) > 60000]
-    tot = {"m": sum(w.elevation_m for w in ws), "n": sum(w.n for w in ws), "ms": sum(w.active_ms or 0 for w in ws)}
+    tot = {"m": sum(w.elevation_m for w in ws), "n": sum(w.n for w in ws), "ms": sum(w.active_ms or 0 for w in ws),
+           "vol": sum((w.load_stats() or {}).get("volume_kgm", 0) for w in ws)}
     return render_template("history.html", workouts=[w.summary() for w in ws], tot=tot)
 
 
@@ -215,7 +228,8 @@ def clean_ms(v):
 @login_required
 def api_settings():
     data = request.get_json(silent=True) or {}
-    allowed = {"height": float, "facing": str, "beep": bool, "voice": bool, "up": float, "down": float, "model": int, "swapLR": bool}
+    allowed = {"height": float, "facing": str, "beep": bool, "voice": bool, "up": float, "down": float, "model": int, "swapLR": bool,
+               "vest": float, "ankle": float, "ankleOn": bool}
     s = dict(g.user.settings or {})
     for k, t in allowed.items():
         if k in data:
@@ -265,6 +279,11 @@ def api_workout(wid):
                 pts.append([clean_ms(p[0]), int(p[1])])
         if pts:
             w.hr, w.hr_source = pts, "live, centură Bluetooth"
+    if isinstance(data.get("loads"), list) and len(data["loads"]) <= 20000:
+        def ok(x):
+            return isinstance(x, (int, float)) and 0 <= x <= 60
+        w.loads = [[float(l[0]), float(l[1])] if isinstance(l, list) and len(l) == 2 and ok(l[0]) and ok(l[1]) else [0.0, 0.0]
+                   for l in data["loads"]]
     if isinstance(data.get("legs"), str) and len(data["legs"]) <= 20000:
         w.legs = "".join(c if c in "LR" else "?" for c in data["legs"])
     db.session.commit()

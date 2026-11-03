@@ -36,6 +36,17 @@
     {% endif %}
   </div>
 
+  {% if w.load %}
+  <section class="card">
+    <h2>Greutăți</h2>
+    <div class="tiles">
+      <div class="tile"><b>{{ w.load.volume_kgm }}</b><span>volum kg·m</span></div>
+      <div class="tile"><b>+{{ '%g' % w.load.max_kg }} kg</b><span>maxim purtat</span></div>
+      <div class="tile"><b>{{ w.load.loaded_climbs }}</b><span>urcări cu greutate</span></div>
+    </div>
+    <span class="muted small">{% if w.load.vest_max %}Vestă până la {{ '%g' % w.load.vest_max }} kg{% endif %}{% if w.load.vest_max and w.load.ankle_max %} · {% endif %}{% if w.load.ankle_max %}glezne 2 × {{ '%g' % w.load.ankle_max }} kg{% endif %}</span>
+  </section>
+  {% endif %}
   {% set lg = w.legs %}{% set known = lg.L + lg.R %}
   {% if known %}
   <section class="card legs">

@@ -56,8 +56,14 @@ body.with-hr #hrBtn b { display: none; }
 #controls button { padding: 14px 8px; }
 #go { font-size: 20px; }
 #go:not(.running) { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-.adj { display: flex; gap: 6px; }
-.adj button { flex: 1; padding: 14px 0 !important; font-size: 18px; }
+#volBtn { flex-direction: column; gap: 1px; line-height: 1.05; padding: 8px 4px !important; min-width: 0; }
+#volBtn b { font-family: var(--display); font-size: 24px; font-variant-numeric: tabular-nums; }
+#volBtn small { font-size: 10px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; font-weight: 400; }
+#volBtn .load { color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: 0; text-transform: none; }
+.adj { display: flex; align-items: center; gap: 10px; }
+.adj button { width: 48px; padding: 10px 0; font-size: 20px; }
+.adj output { min-width: 3ch; text-align: center; font-family: var(--display); font-size: 24px; font-variant-numeric: tabular-nums; }
+.inline { display: flex; align-items: center; gap: 10px; }
 #sheet { position: fixed; inset: 0; background: rgba(5,9,13,.7); display: flex; align-items: flex-end; z-index: 20; }
 #sheet .box { background: var(--panel); width: 100%; max-height: 88vh; overflow-y: auto; border-radius: 16px 16px 0 0; padding: 18px max(16px, env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 16px; -webkit-user-select: text; user-select: text; }
 #sheet h2.title { font-family: var(--display); font-size: 24px; margin: 0; letter-spacing: .03em; color: var(--fg); text-transform: none; }
@@ -106,10 +112,7 @@ input[type=checkbox] { width: 26px; height: 26px; accent-color: var(--accent); }
 <div id="controls">
   <button id="menu" aria-label="Setări">Setări</button>
   <button id="go">Start</button>
-  <div class="adj">
-    <button id="minus" aria-label="Scade o urcare">−</button>
-    <button id="plus" aria-label="Adaugă o urcare">+</button>
-  </div>
+  <button id="volBtn" aria-label="Volum și greutăți"><b id="volVal">0</b><small>kg·m</small><small class="load" id="loadVal">fără greutăți</small></button>
 </div>
 
 <div id="sheet" hidden>
@@ -119,6 +122,14 @@ input[type=checkbox] { width: 26px; height: 26px; accent-color: var(--accent); }
       <button id="newSession">Încheie sesiunea și începe una nouă</button>
       <span class="muted small">Sesiunea curentă e salvată în istoric pe măsură ce urci.</span>
     </div>
+    <h2 id="weightsTitle">Greutăți</h2>
+    <div class="row"><label for="vest">Vestă<small>kg; 0 dacă nu o porți</small></label><input id="vest" type="number" min="0" max="60" step="0.5" inputmode="decimal"></div>
+    <div class="row"><label for="ankleOn">Greutăți la glezne<small>câte una pe fiecare picior</small></label>
+      <div class="inline"><input id="ankle" type="number" min="0.25" max="10" step="0.25" inputmode="decimal" aria-label="kg pe picior"><input id="ankleOn" type="checkbox"></div></div>
+    <span class="muted small">Schimbările se aplică urcărilor de acum încolo. Volum = greutate purtată × metri urcați.</span>
+    <div class="row"><label>Corecție manuală<small>urcări în sesiunea curentă</small></label>
+      <div class="adj"><button id="minus" aria-label="Scade o urcare">−</button><output id="adjCount">0</output><button id="plus" aria-label="Adaugă o urcare">+</button></div></div>
+    <h2>Treaptă și cameră</h2>
     <div class="row"><label for="height">Înălțime treaptă<small>cm per urcare</small></label><input id="height" type="number" min="5" max="60" step="0.5" inputmode="decimal"></div>
     <div class="row"><label for="facing">Camera</label><select id="facing"><option value="user">Față (vezi ecranul)</option><option value="environment">Spate</option></select></div>
     <div class="row"><label for="beep">Bip la fiecare urcare</label><input id="beep" type="checkbox"></div>
@@ -201,7 +212,7 @@ const local = {
   set(k, v) { try { localStorage.setItem('stepper.' + k, JSON.stringify(v)); } catch {} },
   del(k) { try { localStorage.removeItem('stepper.' + k); } catch {} }
 };
-const cfg = Object.assign({ height: 22, facing: 'user', beep: true, voice: true, up: 0.30, down: 0.12, model: 0, swapLR: false }, {{ settings|tojson }});
+const cfg = Object.assign({ height: 22, facing: 'user', beep: true, voice: true, up: 0.30, down: 0.12, model: 0, swapLR: false, vest: 0, ankle: 1.5, ankleOn: false }, {{ settings|tojson }});
 const counter = createCounter({ up: cfg.up, down: cfg.down });
 
 // Current workout. Persisted locally on every change so a reload or crash never loses it;
@@ -263,9 +274,10 @@ $('hrBtn').onclick = () => {
 };
 setInterval(showHR, 2000);
 if (W && typeof W.legs !== 'string') W.legs = '?'.repeat(W.climbs.length);
+if (W && !Array.isArray(W.loads)) W.loads = W.climbs.map(() => [0, 0]);
 if (W) { lastAnnounce = Math.floor(elevation() / 10) * 10; $('go').textContent = 'Continuă'; dirty = true; }
 
-function newWorkout() { W = { uid: UID, id: null, started_at: Date.now(), height_cm: cfg.height, climbs: [], legs: '', hr: [], active_ms: 0 }; saveLocal(); }
+function newWorkout() { W = { uid: UID, id: null, started_at: Date.now(), height_cm: cfg.height, climbs: [], legs: '', loads: [], hr: [], active_ms: 0 }; saveLocal(); }
 function saveLocal() { local.set('current', W); }
 
 // ---- Server sync ----
@@ -281,7 +293,7 @@ async function sync() {
   syncing = true; dirty = false;
   try {
     if (!W.id) { const r = await api('POST', '/api/workouts', { started_at: W.started_at, height_cm: W.height_cm }); W.id = r.id; saveLocal(); }
-    await api('PUT', '/api/workouts/' + W.id, { climbs: W.climbs, legs: W.legs, hr: W.hr && W.hr.length ? W.hr : undefined, active_ms: Math.round(elapsed()), ended_at: Date.now() });
+    await api('PUT', '/api/workouts/' + W.id, { climbs: W.climbs, legs: W.legs, loads: W.loads, hr: W.hr && W.hr.length ? W.hr : undefined, active_ms: Math.round(elapsed()), ended_at: Date.now() });
     $('sync').textContent = 'Salvat';
   } catch (e) {
     dirty = true; $('sync').textContent = 'Nesalvat · reîncerc';
@@ -303,6 +315,8 @@ function render() {
   $('climbs').textContent = nClimbs();
   const t = elapsed(); $('time').textContent = fmtTime(t);
   $('rate').textContent = t > 30000 && nClimbs() ? Math.round(e / (t / 3600000)) : '–';
+  const v = volume(); $('volVal').textContent = v < 1000 ? Math.round(v) : (v / 1000).toFixed(1) + 'k';
+  $('loadVal').textContent = loadLabel(currentLoad()); $('adjCount').textContent = nClimbs();
   const legs = W ? W.legs : '', nL = (legs.match(/L/g) || []).length, nR = (legs.match(/R/g) || []).length;
   $('cntL').textContent = nL; $('cntR').textContent = nR;
   const pL = nL + nR ? Math.round(nL / (nL + nR) * 100) : 50;
@@ -328,9 +342,16 @@ function say(text) {
   if (!cfg.voice || !('speechSynthesis' in window)) return;
   const u = new SpeechSynthesisUtterance(text); u.lang = 'ro-RO'; speechSynthesis.speak(u);
 }
+// External load per climb: [vest kg, kg per ankle]. Both ankle weights rise the full step height.
+function currentLoad() { return [cfg.vest || 0, cfg.ankleOn ? (cfg.ankle || 0) : 0]; }
+const loadKg = l => l[0] + 2 * l[1];
+function volume() { return W ? W.loads.reduce((a, l) => a + loadKg(l), 0) * W.height_cm / 100 : 0; }
+function loadLabel(l) {
+  return loadKg(l) ? `+${loadKg(l)} kg` : 'fără greutăți';
+}
 function addClimb(leg = '?') {
   if (cfg.swapLR && leg !== '?') leg = leg === 'L' ? 'R' : 'L';
-  W.climbs.push(Date.now()); W.legs += leg; markDirty();
+  W.climbs.push(Date.now()); W.legs += leg; W.loads.push(currentLoad()); markDirty();
   const e = elevation();
   beep(nClimbs() % 10 === 0 ? 1320 : 880, 0.12);
   const ten = Math.floor(e / 10) * 10;
@@ -461,7 +482,7 @@ $('go').onclick = async () => {
   markDirty(); sync();
 };
 $('plus').onclick = () => { if (!W) newWorkout(); addClimb(); };
-$('minus').onclick = () => { if (W && W.climbs.length) { W.climbs.pop(); W.legs = W.legs.slice(0, W.climbs.length); markDirty(); render(); } };
+$('minus').onclick = () => { if (W && W.climbs.length) { W.climbs.pop(); W.legs = W.legs.slice(0, W.climbs.length); W.loads.length = W.climbs.length; markDirty(); render(); } };
 
 $('newSession').onclick = async () => {
   pause();
@@ -474,6 +495,7 @@ $('newSession').onclick = async () => {
 
 // ---- Settings ----
 function fillSettings() {
+  $('vest').value = cfg.vest; $('ankle').value = cfg.ankle; $('ankleOn').checked = cfg.ankleOn;
   $('hrHelpTxt').textContent = hasBT
     ? (HR.dev ? `Conectat: ${HR.dev.name || 'centură'}` : 'Apasă ♥ Puls din colțul de sus ca să alegi centura.')
     : (navigator.standalone || matchMedia('(display-mode: standalone)').matches
@@ -484,10 +506,13 @@ function fillSettings() {
   $('newSession').disabled = !W;
 }
 $('menu').onclick = () => { fillSettings(); $('sheet').hidden = false; };
+$('volBtn').onclick = () => { fillSettings(); $('sheet').hidden = false; $('weightsTitle').scrollIntoView({ block: 'start' }); };
 $('close').onclick = async () => {
   const prevFacing = cfg.facing, prevModel = cfg.model;
   cfg.height = Math.min(60, Math.max(5, parseFloat($('height').value) || 22));
   cfg.facing = $('facing').value; cfg.beep = $('beep').checked; cfg.voice = $('voice').checked; cfg.swapLR = $('swapLR').checked;
+  cfg.vest = Math.min(60, Math.max(0, parseFloat($('vest').value) || 0));
+  cfg.ankle = Math.min(10, Math.max(0.25, parseFloat($('ankle').value) || 1.5)); cfg.ankleOn = $('ankleOn').checked;
   cfg.up = Math.min(1, Math.max(0.1, parseFloat($('upTh').value) || 0.30));
   cfg.down = Math.min(cfg.up - 0.05, Math.max(0, parseFloat($('downTh').value) || 0.12));
   cfg.model = +$('model').value;

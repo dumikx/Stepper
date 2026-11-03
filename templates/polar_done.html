@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ro">
+<head>
+{% include "_head.html" %}
+<title>Stepper · Polar</title>
+</head>
+<body>
+<main class="page">
+  <header class="topbar"><span class="brand">Stepper</span></header>
+  <section class="card">
+    <h1>{{ 'Polar conectat' if ok else 'Conectare nereușită' }}</h1>
+    <p style="margin:0">{{ message }}</p>
+    <p class="muted small" style="margin:0">Închide această fereastră și întoarce-te în aplicația Stepper. Dacă pagina Cont nu se actualizează, trage în jos ca să o reîncarci.</p>
+    <a class="btn primary" href="/cont">Deschide pagina Cont</a>
+  </section>
+</main>
+</body>
+</html>

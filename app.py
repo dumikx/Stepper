@@ -10,6 +10,7 @@ import requests
 from flask import (Flask, abort, flash, g, jsonify, redirect, render_template, request, send_from_directory,
                    session as cookie, url_for)
 from flask_sqlalchemy import SQLAlchemy
+from itsdangerous import BadSignature, URLSafeTimedSerializer
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -33,11 +34,12 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
 )
 INVITE_CODE = os.environ.get("INVITE_CODE", "").strip()
-POLAR_CLIENT_ID = os.environ.get("POLAR_CLIENT_ID", "")
-POLAR_CLIENT_SECRET = os.environ.get("POLAR_CLIENT_SECRET", "")
+POLAR_CLIENT_ID = os.environ.get("POLAR_CLIENT_ID", "").strip()
+POLAR_CLIENT_SECRET = os.environ.get("POLAR_CLIENT_SECRET", "").strip()
 POLAR_AUTH_URL = "https://flow.polar.com/oauth2/authorization"
 POLAR_TOKEN_URL = "https://polarremote.com/v2/oauth2/token"
 POLAR_API = os.environ.get("POLAR_API_BASE", "https://www.polaraccesslink.com")
+PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")
 
 db = SQLAlchemy(app)
 
@@ -190,7 +192,9 @@ def workout_page(wid):
 @app.route("/cont")
 @login_required
 def account():
-    return render_template("account.html", polar=bool(g.user.polar_token), polar_configured=bool(POLAR_CLIENT_ID))
+    return render_template("account.html", polar=bool(g.user.polar_token), polar_configured=bool(POLAR_CLIENT_ID),
+                           redirect_uri=polar_redirect_uri() if POLAR_CLIENT_ID else None,
+                           client_hint=(POLAR_CLIENT_ID[:6] + "…") if POLAR_CLIENT_ID else None)
 
 
 @app.route("/manifest.webmanifest")
@@ -261,43 +265,69 @@ def api_workout(wid):
 
 
 # ---------------- Polar AccessLink ----------------
+def polar_redirect_uri():
+    """Must match the URL registered at admin.polaraccesslink.com character for character."""
+    if PUBLIC_URL:
+        return PUBLIC_URL + "/polar/callback"
+    url = url_for("polar_callback", _external=True)
+    if url.startswith("http://") and not request.host.startswith(("localhost", "127.0.0.1")):
+        url = "https://" + url[len("http://"):]
+    return url
+
+
+def polar_state_signer():
+    return URLSafeTimedSerializer(app.secret_key, salt="polar-oauth")
+
+
+def polar_done(ok, message):
+    # The OAuth round trip may come back in a browser that lacks the app's login cookie
+    # (iOS opens other sites from a Home Screen app in a separate view), so don't rely on it.
+    if g.user:
+        flash(message)
+        return redirect(url_for("account"))
+    return render_template("polar_done.html", ok=ok, message=message)
+
+
 @app.route("/polar/connect")
 @login_required
 def polar_connect():
     if not POLAR_CLIENT_ID:
         abort(404)
-    state = secrets.token_urlsafe(16)
-    cookie["polar_state"] = state
-    q = {"response_type": "code", "client_id": POLAR_CLIENT_ID, "state": state,
-         "redirect_uri": url_for("polar_callback", _external=True)}
+    state = polar_state_signer().dumps({"uid": g.user.id, "n": secrets.token_urlsafe(8)})
+    q = {"response_type": "code", "client_id": POLAR_CLIENT_ID, "scope": "accesslink.read_all",
+         "redirect_uri": polar_redirect_uri(), "state": state}
     return redirect(POLAR_AUTH_URL + "?" + urlencode(q))
 
 
 @app.route("/polar/callback")
-@login_required
 def polar_callback():
-    if request.args.get("state") != cookie.pop("polar_state", None) or "code" not in request.args:
-        flash("Conectarea la Polar a fost anulată sau a expirat. Încearcă din nou.")
-        return redirect(url_for("account"))
+    try:
+        uid = polar_state_signer().loads(request.args.get("state", ""), max_age=900)["uid"]
+    except (BadSignature, KeyError, TypeError):
+        uid = None
+    user = db.session.get(User, uid) if uid else None
+    if not user or "code" not in request.args:
+        reason = request.args.get("error", "")
+        return polar_done(False, "Conectarea la Polar a fost anulată sau a expirat. Încearcă din nou din pagina Cont."
+                          + (f" (Polar: {reason})" if reason else ""))
     r = requests.post(POLAR_TOKEN_URL, auth=(POLAR_CLIENT_ID, POLAR_CLIENT_SECRET), timeout=20,
                       headers={"Accept": "application/json"},
                       data={"grant_type": "authorization_code", "code": request.args["code"],
-                            "redirect_uri": url_for("polar_callback", _external=True)})
+                            "redirect_uri": polar_redirect_uri()})
     if r.status_code != 200:
-        flash(f"Polar a refuzat conectarea (cod {r.status_code}).")
-        return redirect(url_for("account"))
+        app.logger.warning("Polar token exchange failed: %s %s", r.status_code, r.text[:300])
+        return polar_done(False, f"Polar a refuzat conectarea (cod {r.status_code}).")
     tok = r.json()
     token, puid = tok.get("access_token"), str(tok.get("x_user_id", ""))
     # Register the user with our client; 409 means already registered, which is fine.
-    rr = requests.post(f"{POLAR_API}/v3/users", json={"member-id": f"stepper-{g.user.id}"}, timeout=20,
+    rr = requests.post(f"{POLAR_API}/v3/users", json={"member-id": f"stepper-{user.id}"}, timeout=20,
                        headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
     if rr.status_code not in (200, 201, 409):
-        flash(f"Nu am putut înregistra contul la Polar (cod {rr.status_code}).")
-        return redirect(url_for("account"))
-    g.user.polar_token, g.user.polar_user_id = token, puid
+        app.logger.warning("Polar user registration failed: %s %s", rr.status_code, rr.text[:300])
+        return polar_done(False, f"Nu am putut înregistra contul la Polar (cod {rr.status_code}).")
+    user.polar_token, user.polar_user_id = token, puid
     db.session.commit()
-    flash("Contul Polar e conectat.")
-    return redirect(url_for("account"))
+    return polar_done(True, "Contul Polar e conectat.")
 
 
 @app.post("/polar/disconnect")

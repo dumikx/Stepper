@@ -20,6 +20,14 @@
       <p class="muted" style="margin:0">Folosește centura H9/H10 cu aplicația Polar Flow, apoi adu pulsul lângă sesiunile de urcare.</p>
       <a class="btn primary" href="/polar/connect">Conectează contul Polar</a>
     {% endif %}
+    {% if redirect_uri %}
+    <details class="small muted">
+      <summary>Detalii tehnice</summary>
+      <p style="margin:8px 0 0">Redirect URL trimis la Polar (trebuie să fie identic cu cel din admin.polaraccesslink.com):</p>
+      <code style="word-break:break-all; color:var(--fg)">{{ redirect_uri }}</code>
+      <p style="margin:8px 0 0">Client ID: <code style="color:var(--fg)">{{ client_hint }}</code></p>
+    </details>
+    {% endif %}
   </section>
 
   <section class="card">
